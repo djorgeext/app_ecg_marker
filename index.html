@@ -6,9 +6,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>
   <!-- PlotlyFinance.js -->
   <script src="https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance.js"></script>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
-  <div id="myDiv" style="width: 800px; height: 640px;"><!-- Plotly chart will be drawn inside this DIV --></div>
+  <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
+  <div id="status" style="margin-top:10px;color:darkgreen"></div>
   <script src="script.js"></script>
+  <div id="myDiv" style="width: 800px; height: 640px;"><!-- Plotly chart will be drawn inside this DIV --></div>
 </body>
 </html>
