@@ -2,15 +2,30 @@
 <html>
 <head>
   <!-- Plotly.js -->
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="./node_modules/plotly.js-dist-min/plotly.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>
-  <!-- PlotlyFinance.js -->
-  <script src="https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance.js"></script>
+  <script>
+    require.config({
+      paths: {
+        'plotly': './node_modules/plotly.js-dist-min/plotly.min',
+        'plotlyjs-finance': 'https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance'
+      },
+      shim: {
+        'plotlyjs-finance': {
+          deps: ['plotly']
+        }
+      }
+    });
+    require(['plotly','plotlyjs-finance'], function(Plotly){
+      // Plotly y el plugin ya están cargados; ahora cargar tu script o inicializar la app
+      require(['script']);
+    });
+  </script>
   <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
   <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
-  <div id="status" style="margin-top:10px;color:darkgreen"></div>
+  <div id="statusOutput" style="margin-top:10px;color:darkgreen"></div>
   <script src="script.js"></script>
   <div id="myDiv" style="width: 800px; height: 640px;"><!-- Plotly chart will be drawn inside this DIV --></div>
 </body>

@@ -1,21 +1,27 @@
 // Script mínimo: lee el archivo .vak, separa por líneas, elimina cabecera,
 // divide por tab '\t', convierte a número la primera columna (time) y la muestra.
 const input = document.getElementById('fileInput');
-const status = document.getElementById('status');
+const statusOutput = document.getElementById('statusOutput');
+const getTrace = (parsedArr, column) => parsedArr.map(row => {
+            const raw = row[column] !== undefined ? row[column].trim() : '';
+            if (raw === '') return null;
+            const n = Number(raw.replace(',', '.'));
+            return Number.isNaN(n) ? null : n;
+          });
 
 input.addEventListener('change', function (ev) {
     const f = ev.target.files && ev.target.files[0];
     if (!f) {
         console.warn('No file selected');
-        status.innerText = 'No se seleccionó archivo';
+        statusOutput.innerText = 'No se seleccionó archivo';
         return;
     }
-    status.innerText = `Leyendo ${f.name} (${f.size} bytes)...`;
+    statusOutput.innerText = `Leyendo ${f.name} (${f.size} bytes)...`;
     const fr = new FileReader();
 
     fr.onerror = () => {
         console.error('FileReader error', fr.error);
-        status.innerText = 'Error leyendo archivo (ver consola)';
+        statusOutput.innerText = 'Error leyendo archivo (ver consola)';
     };
 
     fr.onload = (e) => {
@@ -23,7 +29,7 @@ input.addEventListener('change', function (ev) {
           const text = e.target.result;
           if (!text) {
             console.warn('Archivo vacío');
-            status.innerText = 'Archivo vacío';
+            statusOutput.innerText = 'Archivo vacío';
             return;
           }
 
@@ -39,7 +45,7 @@ input.addEventListener('change', function (ev) {
           const lines = rawLines.filter(l => l.trim().length > 0);
           if (lines.length <= 1) {
             console.warn('Muy pocas líneas útiles (quizás solo header)');
-            status.innerText = 'Pocas líneas útiles';
+            statusOutput.innerText = 'Pocas líneas útiles';
             return;
           }
 
@@ -55,29 +61,44 @@ input.addEventListener('change', function (ev) {
           console.log('Número de filas parseadas:', parsed.length);
 
           // 6) extraer columna time (primera columna) y convertir a número
-          const time = parsed.map(row => {
-            const raw = row[0] !== undefined ? row[0].trim() : '';
-            if (raw === '') return null;
-            const n = Number(raw.replace(',', '.'));
-            return Number.isNaN(n) ? null : n;
-          });
+          const time = getTrace(parsed, 0);
 
           console.log('time length:', time.length);
           console.log('time sample (primeros 10):', time.slice(0,10));
+          
 
           // 7) ejemplo: columna 1 (channel 1)
-          const ch1 = parsed.map(row => {
-            const raw = row[1] !== undefined ? row[1].trim() : '';
-            const n = raw === '' ? null : Number(raw.replace(',', '.'));
-            return Number.isNaN(n) ? null : n;
-          });
+          const ch1 = getTrace(parsed, 1);
           console.log('channel 1 sample (primeros 10):', ch1.slice(0,10));
 
-          status.innerText = `Leídas ${parsed.length} filas. Revisa la consola para ver muestras.`;
+          statusOutput.innerText = `Leídas ${parsed.length} filas. Revisa la consola para ver muestras.`;
+          var myPlot = document.getElementById('myDiv'),
+              trace1 = { x: time, y: ch1, type: 'scatter', mode: 'lines', name: 'Channel 1' },
+              data = [ trace1 ],
+              layout = {
+                  hovermode:'closest',
+                  title: {text: 'Click on Points to add an Annotation on it'}
+              };
+          Plotly.newPlot('myDiv', data, layout);
+          myPlot.on('plotly_click', function(data){
+              var pts = '';
+              for(var i=0; i < data.points.length; i++){
+                  annotate_text = 'x = '+data.points[i].x +
+                                'y = '+data.points[i].y.toPrecision(4);
+                  annotation = {
+                    text: annotate_text,
+                    x: data.points[i].x,
+                    y: parseFloat(data.points[i].y.toPrecision(4))
+                  }
+                  annotations = myPlot.layout.annotations || [];
+                  annotations.push(annotation);
+                  Plotly.relayout('myDiv',{annotations: annotations})
+              }
+          });
 
         } catch (err) {
           console.error('Error procesando archivo:', err);
-          status.innerText = 'Error procesando archivo (ver consola)';
+          statusOutput.innerText = 'Error procesando archivo (ver consola)';
         }
       };
 
