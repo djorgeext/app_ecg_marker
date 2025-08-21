@@ -84,6 +84,10 @@ input.addEventListener('change', function (ev) {
           const slider = document.getElementById('navigator');
           const navInfo = document.getElementById('navigatorInfo');
 
+          // marcas (coordenadas X) persistentes — declarar antes de renderWindow
+          const marks = [];
+          window.marks = marks;
+
           // helper: búsqueda binaria (primer índice con arr[i] >= val)
           const findIndex = (arr, val) => {
             let lo = 0, hi = arr.length - 1;
@@ -148,7 +152,7 @@ input.addEventListener('change', function (ev) {
           syncAllCheckbox();
 
           // --- render dinámico: dibuja las derivaciones apiladas ---
-           const renderWindow = (startIndex, endIndex) => {
+          const renderWindow = (startIndex, endIndex) => {
              const sel = getSelectedIndices();
              if (sel.length === 0) {
                // nada seleccionado: limpiar gráfico
@@ -215,7 +219,25 @@ input.addEventListener('change', function (ev) {
             // X axis: sólo mostrar labels en la última (inferior) y axis
             layout.xaxis = { anchor: 'y' + (m === 1 ? '' : (m)), showgrid: false };
 
-            Plotly.react(myPlot, dataOut, layout, {displayModeBar: true});
+            // incorporar marcas persistentes (shapes y annotations) en el layout
+            const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !s.id.toString().startsWith('vline-')) : [];
+            const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !a.id.toString().startsWith('ann-')) : [];
+
+            const markShapes = (marks || []).map((x, i) => ({
+              type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
+              line: { color: 'red', width: 2 }, id: 'vline-' + (i+1), editable: true
+            }));
+
+            const markAnns = (marks || []).map((x, i) => ({
+              x: x, y: 1.01, xref: 'x', yref: 'paper', text: String(x), showarrow: false,
+              align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: 'red', font: { color: 'red', size: 12 }, id: 'ann-' + (i+1)
+            }));
+
+            layout.shapes = existingShapes.concat(markShapes);
+            layout.annotations = existingAnns.concat(markAnns);
+
+            // pasar editable:true en config para permitir arrastrar shapes/annotations
+            Plotly.react(myPlot, dataOut, layout, {displayModeBar: true, editable: true});
           };
 
           // estado inicial: mostrar primeros 3 canales
@@ -255,25 +277,32 @@ input.addEventListener('change', function (ev) {
             });
           }
 
-          // click para anotar: mantener compatibilidad (añade anotación en la traza correspondiente)
+          // marcar puntos: cada click añade una línea vertical roja persistente y guarda X en marks
           myPlot.on('plotly_click', function(evt){
-            // evt.points puede contener punto en alguna traza
-            const annotations = myPlot.layout.annotations ? myPlot.layout.annotations.slice() : [];
-            evt.points.forEach(pt => {
-              annotations.push({
-                x: pt.x,
-                y: pt.y,
-                xref: 'x',
-                yref: pt.fullData.yaxis || 'y',
-                text: `x=${pt.x} y=${pt.y.toPrecision(4)}`,
-                showarrow: true,
-                arrowhead: 2,
-                ax: 0,
-                ay: -20
-              });
-            });
-            Plotly.relayout(myPlot, { annotations });
+            const pts = evt.points && evt.points.length ? evt.points : null;
+            if (!pts) return;
+            const xval = pts[0].x;
+
+            // evitar duplicados
+            if (marks.some(m => m === xval)) return;
+            marks.push(xval);
+
+            // re-renderizar la ventana actual para que marks se inyecten en layout
+            const start = Number(slider ? slider.value : 0);
+            const end = Math.min(fullX.length, start + windowSize);
+            renderWindow(start, end);
           });
+
+          // botón para borrar marcas
+          const clearBtn = document.getElementById('clearMarks');
+          if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+              marks.length = 0;
+              const start = Number(slider ? slider.value : 0);
+              const end = Math.min(fullX.length, start + windowSize);
+              renderWindow(start, end);
+            });
+          }
 
           // zoom/relayout -> actualizar datos reales del rango
           myPlot.on('plotly_relayout', function(eventdata){
@@ -291,6 +320,26 @@ input.addEventListener('change', function (ev) {
               navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length}`;
             }
             renderWindow(startIndex, endIndex);
+          });
+
+          // detectar movimiento de shapes (drag) y sincronizar marks
+          myPlot.on('plotly_relayout', function(eventdata){
+            // eventos de shape edit vienen como 'shapes[i].x0' o similar
+            const updated = Object.keys(eventdata).filter(k => k.startsWith('shapes[') && (k.endsWith('.x0') || k.endsWith('.x1')));
+            if (updated.length === 0) return;
+
+            // reconstruir marks leyendo current shapes con prefijo vline-
+            const curShapes = Array.isArray(myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => s.id && s.id.toString().startsWith('vline-')) : [];
+            // extraer x positions (usar x0)
+            const xs = curShapes.map(s => s.x0).filter(x => x !== undefined).map(x => Number(x));
+            // ordenar y actualizar marks
+            xs.sort((a,b) => a - b);
+            marks.length = 0;
+            xs.forEach(x => marks.push(x));
+            // re-render para que annotations coincidan con shapes
+            const start = Number(slider ? slider.value : 0);
+            const end = Math.min(fullX.length, start + windowSize);
+            renderWindow(start, end);
           });
         } catch (err) {
           console.error('Error procesando archivo:', err);
