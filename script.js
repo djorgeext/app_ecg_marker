@@ -60,8 +60,19 @@ input.addEventListener('change', function (ev) {
           // 6) extraer columna time (primera columna) y convertir a número
           const time = getTrace(parsed, 0);
           
-          // 7) ejemplo: columna 1 (channel 1)
+          // 7) 12 columns
           const ch1 = getTrace(parsed, 1);
+          const ch2 = getTrace(parsed, 2);
+          const ch3 = getTrace(parsed, 3);
+          const ch4 = getTrace(parsed, 4);
+          const ch5 = getTrace(parsed, 5);
+          const ch6 = getTrace(parsed, 6);
+          const ch7 = getTrace(parsed, 7);
+          const ch8 = getTrace(parsed, 8);
+          const ch9 = getTrace(parsed, 9);
+          const ch10 = getTrace(parsed, 10);
+          const ch11 = getTrace(parsed, 11);
+          const ch12 = getTrace(parsed, 12);
 
           statusOutput.innerText = `Leídas ${parsed.length} filas. Revisa la consola para ver muestras.`;
 
@@ -69,7 +80,32 @@ input.addEventListener('change', function (ev) {
           const fullX = time;
           const fullY = ch1;
 
-          const windowSize = 1000; // cantidad de puntos visibles en la ventana
+          const windowSize = 1000; // cantidad de puntos visibles en la ventana (valor por defecto para el slider)
+          const maxRender = 5000;  // máximo de puntos a renderizar sin decimar (ajusta según rendimiento)
+
+          // helper: búsqueda binaria (encuentra primer índice i con arr[i] >= val)
+          const findIndex = (arr, val) => {
+            let lo = 0, hi = arr.length - 1;
+            while (lo < hi) {
+              const mid = Math.floor((lo + hi) / 2);
+              if (arr[mid] < val) lo = mid + 1; else hi = mid;
+            }
+            return lo;
+          };
+
+          // helper: decimar por stride simple (mantiene orden)
+          const decimate = (xs, ys, maxPoints) => {
+            const n = xs.length;
+            if (n <= maxPoints) return { x: xs, y: ys };
+            const step = Math.ceil(n / maxPoints);
+            const nx = [], ny = [];
+            for (let i = 0; i < n; i += step) {
+              nx.push(xs[i]);
+              ny.push(ys[i]);
+            }
+            return { x: nx, y: ny };
+          };
+
           const initialX = fullX.slice(0, windowSize);
           const initialY = fullY.slice(0, windowSize);
 
@@ -97,8 +133,11 @@ input.addEventListener('change', function (ev) {
             slider.addEventListener('input', () => {
               const start = Number(slider.value);
               const end = Math.min(fullX.length, start + windowSize);
-              Plotly.restyle(myPlot, { x: [fullX.slice(start, end)], y: [fullY.slice(start, end)] }, [0]);
-              navInfo.innerText = `Ventana: ${start} - ${end} / ${fullX.length}`;
+              const slicedX = fullX.slice(start, end);
+              const slicedY = fullY.slice(start, end);
+              const dec = decimate(slicedX, slicedY, maxRender);
+              Plotly.restyle(myPlot, { x: [dec.x], y: [dec.y] }, [0]);
+              navInfo.innerText = `Ventana: ${start} - ${end} / ${fullX.length} (${dec.x.length} pts)`;
             });
           }
 
@@ -120,29 +159,36 @@ input.addEventListener('change', function (ev) {
 
           // Actualizar la ventana visible cuando cambia el rango (p. ej. zoom/relayout)
           myPlot.on('plotly_relayout', function(eventdata){
-            // obtener el valor izquierdo del rango si existe
+            // intento leer rango completo (izq y der)
             const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
-            if (left == null) return;
+            const right = eventdata['xaxis.range[1]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][1] : null);
 
-            // búsqueda binaria para encontrar el índice de inicio en fullX
-            const findIndex = (arr, val) => {
-              let lo = 0, hi = arr.length - 1;
-              while (lo < hi) {
-                const mid = Math.floor((lo + hi) / 2);
-                if (arr[mid] < val) lo = mid + 1; else hi = mid;
-              }
-              return lo;
-            };
+            // si no hay rango completo (por ejemplo se cambia otra cosa), salir
+            if (left == null || right == null) return;
 
+            // encontrar índices para left/right
             const startIndex = Math.max(0, findIndex(fullX, left));
-            const endIndex = Math.min(fullX.length, startIndex + windowSize);
+            let endIndex = Math.min(fullX.length, findIndex(fullX, right) + 1); // +1 para incluir punto derecho
 
-            Plotly.restyle(myPlot, { x: [fullX.slice(startIndex, endIndex)], y: [fullY.slice(startIndex, endIndex)] }, [0]);
+            if (endIndex <= startIndex) {
+              // fallback: usa al menos windowSize
+              endIndex = Math.min(fullX.length, startIndex + windowSize);
+            }
+
+            const requestedCount = endIndex - startIndex;
+
+            // slice y decimar si hace falta
+            const sliceX = fullX.slice(startIndex, endIndex);
+            const sliceY = fullY.slice(startIndex, endIndex);
+            const dec = decimate(sliceX, sliceY, maxRender);
+
+            Plotly.restyle(myPlot, { x: [dec.x], y: [dec.y] }, [0]);
 
             // sincronizar slider si está presente
             if (slider && navInfo) {
+              // mantener slider coherente: si la ventana actual es mayor que windowSize, colocamos slider en startIndex
               slider.value = startIndex;
-              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length}`;
+              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length} (${dec.x.length} pts)`;
             }
           });
 
