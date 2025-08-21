@@ -57,43 +57,93 @@ input.addEventListener('change', function (ev) {
           //    cada row -> array de columnas
           const parsed = lines.map(r => r.replace(/\r$/,'').split('\t'));
 
-          console.log('Ejemplo parsed[0]:', parsed[0]);
-          console.log('Número de filas parseadas:', parsed.length);
-
           // 6) extraer columna time (primera columna) y convertir a número
           const time = getTrace(parsed, 0);
-
-          console.log('time length:', time.length);
-          console.log('time sample (primeros 10):', time.slice(0,10));
           
-
           // 7) ejemplo: columna 1 (channel 1)
           const ch1 = getTrace(parsed, 1);
-          console.log('channel 1 sample (primeros 10):', ch1.slice(0,10));
 
           statusOutput.innerText = `Leídas ${parsed.length} filas. Revisa la consola para ver muestras.`;
-          var myPlot = document.getElementById('myDiv'),
-              trace1 = { x: time, y: ch1, type: 'scatter', mode: 'lines', name: 'Channel 1' },
-              data = [ trace1 ],
-              layout = {
-                  hovermode:'closest',
-                  title: {text: 'Click on Points to add an Annotation on it'}
-              };
+
+          const myPlot = document.getElementById('myDiv');
+          const fullX = time;
+          const fullY = ch1;
+
+          const windowSize = 1000; // cantidad de puntos visibles en la ventana
+          const initialX = fullX.slice(0, windowSize);
+          const initialY = fullY.slice(0, windowSize);
+
+          const trace1 = { x: initialX, y: initialY, type: 'scatter', mode: 'lines', name: 'Channel 1' };
+          const data = [ trace1 ];
+          const layout = {
+              hovermode: 'closest',
+              title: { text: 'Click on Points to add an Annotation on it' },
+              xaxis: {
+                rangeslider: { visible: false } // desactivo el rangeslider por defecto
+              }
+          };
+
           Plotly.newPlot('myDiv', data, layout);
+
+          // configurar navegador (slider) personalizado
+          const slider = document.getElementById('navigator');
+          const navInfo = document.getElementById('navigatorInfo');
+          if (slider && navInfo) {
+            slider.max = Math.max(0, fullX.length - windowSize);
+            slider.step = 1;
+            slider.value = 0;
+            navInfo.innerText = `Ventana: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
+
+            slider.addEventListener('input', () => {
+              const start = Number(slider.value);
+              const end = Math.min(fullX.length, start + windowSize);
+              Plotly.restyle(myPlot, { x: [fullX.slice(start, end)], y: [fullY.slice(start, end)] }, [0]);
+              navInfo.innerText = `Ventana: ${start} - ${end} / ${fullX.length}`;
+            });
+          }
+
+          // click para anotar (mantengo tu lógica)
           myPlot.on('plotly_click', function(data){
-              var pts = '';
               for(var i=0; i < data.points.length; i++){
-                  annotate_text = 'x = '+data.points[i].x +
-                                'y = '+data.points[i].y.toPrecision(4);
-                  annotation = {
+                  const annotate_text = 'x = '+data.points[i].x +
+                                ' y = '+data.points[i].y.toPrecision(4);
+                  const annotation = {
                     text: annotate_text,
                     x: data.points[i].x,
                     y: parseFloat(data.points[i].y.toPrecision(4))
-                  }
-                  annotations = myPlot.layout.annotations || [];
+                  };
+                  const annotations = myPlot.layout.annotations || [];
                   annotations.push(annotation);
-                  Plotly.relayout('myDiv',{annotations: annotations})
+                  Plotly.relayout('myDiv',{annotations: annotations});
               }
+          });
+
+          // Actualizar la ventana visible cuando cambia el rango (p. ej. zoom/relayout)
+          myPlot.on('plotly_relayout', function(eventdata){
+            // obtener el valor izquierdo del rango si existe
+            const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
+            if (left == null) return;
+
+            // búsqueda binaria para encontrar el índice de inicio en fullX
+            const findIndex = (arr, val) => {
+              let lo = 0, hi = arr.length - 1;
+              while (lo < hi) {
+                const mid = Math.floor((lo + hi) / 2);
+                if (arr[mid] < val) lo = mid + 1; else hi = mid;
+              }
+              return lo;
+            };
+
+            const startIndex = Math.max(0, findIndex(fullX, left));
+            const endIndex = Math.min(fullX.length, startIndex + windowSize);
+
+            Plotly.restyle(myPlot, { x: [fullX.slice(startIndex, endIndex)], y: [fullY.slice(startIndex, endIndex)] }, [0]);
+
+            // sincronizar slider si está presente
+            if (slider && navInfo) {
+              slider.value = startIndex;
+              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length}`;
+            }
           });
 
         } catch (err) {

@@ -8,7 +8,9 @@
     require.config({
       paths: {
         'plotly': './node_modules/plotly.js-dist-min/plotly.min',
-        'plotlyjs-finance': 'https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance'
+        'plotlyjs-finance': 'https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance',
+        // añadir papaparse como módulo para que RequireJS lo cargue correctamente
+        'papaparse': 'https://unpkg.com/papaparse@5.4.1/papaparse.min'
       },
       shim: {
         'plotlyjs-finance': {
@@ -16,17 +18,23 @@
         }
       }
     });
-    require(['plotly','plotlyjs-finance'], function(Plotly){
-      // Plotly y el plugin ya están cargados; ahora cargar tu script o inicializar la app
-      require(['script']);
+    // cargar papaparse y luego tu script (o pásalo como dependencia en script.js si lo necesita)
+    require(['plotly','plotlyjs-finance','papaparse'], function(Plotly, finance, Papa){
+      // Plotly, el plugin y PapaParse ya cargaron; script.js también se ejecuta.
     });
   </script>
-  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script> -->
 </head>
 <body>
   <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
   <div id="statusOutput" style="margin-top:10px;color:darkgreen"></div>
   <script src="script.js"></script>
-  <div id="myDiv" style="width: 800px; height: 640px;"><!-- Plotly chart will be drawn inside this DIV --></div>
+  <div id="myDiv" style="width: 100rem; height: 50rem;"><!-- Plotly chart will be drawn inside this DIV --></div>
+
+  <!-- Navegador grande y legible -->
+  <div style="width: 100rem; margin-top:8px;">
+    <input id="navigator" type="range" min="0" value="0" step="1" style="width:100%;" />
+    <div id="navigatorInfo" style="font-size:0.9rem;color:#333;margin-top:4px;"></div>
+  </div>
 </body>
 </html>
