@@ -74,16 +74,17 @@ input.addEventListener('change', function (ev) {
           const ch11 = getTrace(parsed, 11);
           const ch12 = getTrace(parsed, 12);
 
-          statusOutput.innerText = `Leídas ${parsed.length} filas. Revisa la consola para ver muestras.`;
+          const channels = [ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12];
 
+          // estado y referencias (asegura que están definidas antes de usarse)
+          const fullX = time; // array completo de tiempos
+          const windowSize = 1000; // puntos visibles por defecto
+          const maxRender = 5000;  // máximo de puntos sin decimar
           const myPlot = document.getElementById('myDiv');
-          const fullX = time;
-          const fullY = ch1;
+          const slider = document.getElementById('navigator');
+          const navInfo = document.getElementById('navigatorInfo');
 
-          const windowSize = 1000; // cantidad de puntos visibles en la ventana (valor por defecto para el slider)
-          const maxRender = 5000;  // máximo de puntos a renderizar sin decimar (ajusta según rendimiento)
-
-          // helper: búsqueda binaria (encuentra primer índice i con arr[i] >= val)
+          // helper: búsqueda binaria (primer índice con arr[i] >= val)
           const findIndex = (arr, val) => {
             let lo = 0, hi = arr.length - 1;
             while (lo < hi) {
@@ -93,7 +94,7 @@ input.addEventListener('change', function (ev) {
             return lo;
           };
 
-          // helper: decimar por stride simple (mantiene orden)
+          // helper: decimar por stride simple
           const decimate = (xs, ys, maxPoints) => {
             const n = xs.length;
             if (n <= maxPoints) return { x: xs, y: ys };
@@ -106,24 +107,131 @@ input.addEventListener('change', function (ev) {
             return { x: nx, y: ny };
           };
 
-          const initialX = fullX.slice(0, windowSize);
-          const initialY = fullY.slice(0, windowSize);
+           // --- UI: generar checkboxes en panel derecho ---
+           const channelListDiv = document.getElementById('channelList');
+           const allCheckbox = document.getElementById('ch_all');
+           const showBtn = document.getElementById('showSelected');
 
-          const trace1 = { x: initialX, y: initialY, type: 'scatter', mode: 'lines', name: 'Channel 1' };
-          const data = [ trace1 ];
-          const layout = {
-              hovermode: 'closest',
-              title: { text: 'Click on Points to add an Annotation on it' },
-              xaxis: {
-                rangeslider: { visible: false } // desactivo el rangeslider por defecto
-              }
+           // crea checkboxes para 12 canales
+           channelListDiv.innerHTML = '';
+           channels.forEach((_, idx) => {
+             const n = idx + 1;
+             const wrapper = document.createElement('div');
+             // marcar por defecto solo los primeros 3 canales
+             const isChecked = idx < 3 ? 'checked' : '';
+             wrapper.innerHTML = `<label style="display:block"><input type="checkbox" class="ch_cb" data-idx="${idx}" ${isChecked} /> Ch${n}</label>`;
+             channelListDiv.appendChild(wrapper);
+           });
+
+          // helper: lee selección
+          const getSelectedIndices = () => {
+            const cbs = Array.from(document.querySelectorAll('.ch_cb'));
+            const selected = cbs.filter(cb => cb.checked).map(cb => Number(cb.dataset.idx));
+            if (allCheckbox && allCheckbox.checked) return channels.map((_,i) => i);
+            return selected;
           };
 
-          Plotly.newPlot('myDiv', data, layout);
+          // sincronizar "Todos" checkbox
+          const syncAllCheckbox = () => {
+            const cbs = Array.from(document.querySelectorAll('.ch_cb'));
+            const allChecked = cbs.length > 0 && cbs.every(cb => cb.checked);
+            if (allCheckbox) allCheckbox.checked = allChecked;
+          };
+          channelListDiv.addEventListener('change', syncAllCheckbox);
+          if (allCheckbox) {
+            allCheckbox.addEventListener('change', () => {
+              const cbs = Array.from(document.querySelectorAll('.ch_cb'));
+              cbs.forEach(cb => cb.checked = allCheckbox.checked);
+            });
+          }
+          // inicializar estado de "Todos" según checkboxes creados (primeros 3 checked)
+          syncAllCheckbox();
 
-          // configurar navegador (slider) personalizado
-          const slider = document.getElementById('navigator');
-          const navInfo = document.getElementById('navigatorInfo');
+          // --- render dinámico: dibuja las derivaciones apiladas ---
+           const renderWindow = (startIndex, endIndex) => {
+             const sel = getSelectedIndices();
+             if (sel.length === 0) {
+               // nada seleccionado: limpiar gráfico
+               Plotly.purge(myPlot);
+               return;
+             }
+
+            const m = sel.length;
+            const gap = 0.02;
+            const totalGap = gap * (m - 1);
+            const h = (1 - totalGap) / m;
+
+            const dataOut = [];
+            // calcular altura dinámica para que los subplots llenen el contenedor myDiv
+            // usamos el tamaño real del contenedor si está disponible
+            let containerHeight = 600; // fallback
+            try {
+              const rect = myPlot.getBoundingClientRect();
+              if (rect && rect.height > 0) containerHeight = rect.height;
+            } catch (err) {
+              // ignore
+            }
+
+            const layout = {
+              showlegend: false,
+              margin: { t: 40, r: 20, l: 50, b: 40 },
+              height: Math.max(containerHeight, 120 * m),
+              xaxis: { showgrid: false } // el eje x común (se mostrará en el bottom)
+            };
+
+            // crear dominios y yaxes
+            for (let i = 0; i < m; i++) {
+              const top = 1 - i * (h + gap);
+              const bottom = top - h;
+              const yName = i === 0 ? 'yaxis' : 'yaxis' + (i + 1);
+              layout[yName] = {
+                domain: [bottom, top],
+                anchor: 'x',
+                showgrid: false,
+                zeroline: false
+              };
+              // mostrar ticks sólo en el eje central o a la izquierda? dejamos ticks en cada subplot
+            }
+
+            // construir trazas (una por canal seleccionada)
+            const maxPerTrace = Math.max(1000, Math.floor(maxRender / Math.max(1, m))); // reparto de decimación
+            sel.forEach((chIdx, i) => {
+              const xs = fullX.slice(startIndex, endIndex);
+              const ys = channels[chIdx].slice(startIndex, endIndex);
+              // decimar
+              const dec = decimate(xs, ys, maxPerTrace);
+              const trace = {
+                x: dec.x,
+                y: dec.y,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Ch' + (chIdx + 1),
+                line: { width: 1 },
+                yaxis: i === 0 ? 'y' : 'y' + (i + 1) // primera traza usa y (implícito), otras y2,y3...
+              };
+              dataOut.push(trace);
+            });
+
+            // X axis: sólo mostrar labels en la última (inferior) y axis
+            layout.xaxis = { anchor: 'y' + (m === 1 ? '' : (m)), showgrid: false };
+
+            Plotly.react(myPlot, dataOut, layout, {displayModeBar: true});
+          };
+
+          // estado inicial: mostrar primeros 3 canales
+          // aseguramos que la UI refleje que los primeros 3 están marcados por defecto
+          const initialStart = 0;
+          const initialEnd = Math.min(fullX.length, initialStart + windowSize);
+          // si existe el slider/contadores, inicializar
+          if (slider && navInfo) {
+            slider.max = Math.max(0, fullX.length - windowSize);
+            slider.step = 1;
+            slider.value = 0;
+            navInfo.innerText = `Ventana: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
+          }
+          renderWindow(initialStart, initialEnd);
+
+          // slider -> ventana
           if (slider && navInfo) {
             slider.max = Math.max(0, fullX.length - windowSize);
             slider.step = 1;
@@ -133,65 +241,57 @@ input.addEventListener('change', function (ev) {
             slider.addEventListener('input', () => {
               const start = Number(slider.value);
               const end = Math.min(fullX.length, start + windowSize);
-              const slicedX = fullX.slice(start, end);
-              const slicedY = fullY.slice(start, end);
-              const dec = decimate(slicedX, slicedY, maxRender);
-              Plotly.restyle(myPlot, { x: [dec.x], y: [dec.y] }, [0]);
-              navInfo.innerText = `Ventana: ${start} - ${end} / ${fullX.length} (${dec.x.length} pts)`;
+              renderWindow(start, end);
+              navInfo.innerText = `Ventana: ${start} - ${end} / ${fullX.length}`;
             });
           }
 
-          // click para anotar (mantengo tu lógica)
-          myPlot.on('plotly_click', function(data){
-              for(var i=0; i < data.points.length; i++){
-                  const annotate_text = 'x = '+data.points[i].x +
-                                ' y = '+data.points[i].y.toPrecision(4);
-                  const annotation = {
-                    text: annotate_text,
-                    x: data.points[i].x,
-                    y: parseFloat(data.points[i].y.toPrecision(4))
-                  };
-                  const annotations = myPlot.layout.annotations || [];
-                  annotations.push(annotation);
-                  Plotly.relayout('myDiv',{annotations: annotations});
-              }
+          // boton mostrar aplica selección actual
+          if (showBtn) {
+            showBtn.addEventListener('click', () => {
+              const start = Number(slider ? slider.value : 0);
+              const end = Math.min(fullX.length, start + windowSize);
+              renderWindow(start, end);
+            });
+          }
+
+          // click para anotar: mantener compatibilidad (añade anotación en la traza correspondiente)
+          myPlot.on('plotly_click', function(evt){
+            // evt.points puede contener punto en alguna traza
+            const annotations = myPlot.layout.annotations ? myPlot.layout.annotations.slice() : [];
+            evt.points.forEach(pt => {
+              annotations.push({
+                x: pt.x,
+                y: pt.y,
+                xref: 'x',
+                yref: pt.fullData.yaxis || 'y',
+                text: `x=${pt.x} y=${pt.y.toPrecision(4)}`,
+                showarrow: true,
+                arrowhead: 2,
+                ax: 0,
+                ay: -20
+              });
+            });
+            Plotly.relayout(myPlot, { annotations });
           });
 
-          // Actualizar la ventana visible cuando cambia el rango (p. ej. zoom/relayout)
+          // zoom/relayout -> actualizar datos reales del rango
           myPlot.on('plotly_relayout', function(eventdata){
-            // intento leer rango completo (izq y der)
             const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
             const right = eventdata['xaxis.range[1]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][1] : null);
-
-            // si no hay rango completo (por ejemplo se cambia otra cosa), salir
             if (left == null || right == null) return;
 
-            // encontrar índices para left/right
             const startIndex = Math.max(0, findIndex(fullX, left));
-            let endIndex = Math.min(fullX.length, findIndex(fullX, right) + 1); // +1 para incluir punto derecho
+            let endIndex = Math.min(fullX.length, findIndex(fullX, right) + 1);
+            if (endIndex <= startIndex) endIndex = Math.min(fullX.length, startIndex + windowSize);
 
-            if (endIndex <= startIndex) {
-              // fallback: usa al menos windowSize
-              endIndex = Math.min(fullX.length, startIndex + windowSize);
-            }
-
-            const requestedCount = endIndex - startIndex;
-
-            // slice y decimar si hace falta
-            const sliceX = fullX.slice(startIndex, endIndex);
-            const sliceY = fullY.slice(startIndex, endIndex);
-            const dec = decimate(sliceX, sliceY, maxRender);
-
-            Plotly.restyle(myPlot, { x: [dec.x], y: [dec.y] }, [0]);
-
-            // sincronizar slider si está presente
+            // si la ventana es muy grande, actualizar slider y renderWindow con decimación
             if (slider && navInfo) {
-              // mantener slider coherente: si la ventana actual es mayor que windowSize, colocamos slider en startIndex
               slider.value = startIndex;
-              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length} (${dec.x.length} pts)`;
+              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length}`;
             }
+            renderWindow(startIndex, endIndex);
           });
-
         } catch (err) {
           console.error('Error procesando archivo:', err);
           statusOutput.innerText = 'Error procesando archivo (ver consola)';

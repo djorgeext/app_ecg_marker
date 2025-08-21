@@ -29,12 +29,27 @@
   <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
   <div id="statusOutput" style="margin-top:10px;color:darkgreen"></div>
   <script src="script.js"></script>
-  <div id="myDiv" style="width: 100rem; height: 50rem;"><!-- Plotly chart will be drawn inside this DIV --></div>
+  <div id="myDiv" style="width: calc(100% - 220px); height: 50rem; display:inline-block;"><!-- Plotly chart --></div>
 
   <!-- Navegador grande y legible -->
-  <div style="width: 100rem; margin-top:8px;">
+  <div style="width: calc(100% - 220px); margin-top:8px; display:inline-block;">
     <input id="navigator" type="range" min="0" value="0" step="1" style="width:100%;" />
     <div id="navigatorInfo" style="font-size:0.9rem;color:#333;margin-top:4px;"></div>
   </div>
+
+  <!-- Panel derecho: selector de canales -->
+  <aside id="channelPanel" style="width:200px; position:fixed; right:12px; top:60px; bottom:40px; overflow:auto;
+                                   padding:10px; border:1px solid #ddd; background:#fafafa; box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+    <strong>Canales</strong>
+    <div style="margin-top:8px;">
+      <label><input type="checkbox" id="ch_all" /> Todos</label>
+    </div>
+    <div id="channelList" style="margin-top:8px;">
+      <!-- checkboxes generados dinámicamente por script.js -->
+    </div>
+    <div style="margin-top:8px;">
+      <button id="showSelected" style="width:100%;">Mostrar</button>
+    </div>
+  </aside>
 </body>
 </html>
