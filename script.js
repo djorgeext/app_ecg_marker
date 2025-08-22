@@ -336,6 +336,34 @@ input.addEventListener('change', function (ev) {
             });
           }
 
+          // botón para descargar marcas como float32 (binario)
+          const downloadBtn = document.getElementById('downloadMarks');
+          if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+              if (!Array.isArray(marksAll) || marksAll.length === 0) {
+                alert('No hay marcas para descargar');
+                return;
+              }
+              // convertir índices a tiempo (float32)
+              const floats = new Float32Array(marksAll.length);
+              for (let i = 0; i < marksAll.length; i++) {
+                const idx = marksAll[i];
+                floats[i] = Number(fullX[idx]) || 0.0;
+              }
+              // crear blob binario con float32 little-endian
+              const buffer = floats.buffer;
+              const blob = new Blob([buffer], { type: 'application/octet-stream' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'marks_float32.bin';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            });
+          }
+
           // zoom/relayout -> actualizar datos reales del rango
           myPlot.on('plotly_relayout', function(eventdata){
             const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
