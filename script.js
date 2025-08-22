@@ -85,9 +85,9 @@ input.addEventListener('change', function (ev) {
           const navInfo = document.getElementById('navigatorInfo');
 
           // marcas persistentes: guardamos índices de muestra (enteros) para evitar desalineos
-          const marks = [];
-          // exponer marks para debugging (índices)
-          window.marks = marks;
+          const marksAll = [];
+          // exponer marksAll para debugging (índices)
+          window.marksAll = marksAll;
 
           // helper: búsqueda binaria (primer índice con arr[i] >= val)
           const findIndex = (arr, val) => {
@@ -224,18 +224,20 @@ input.addEventListener('change', function (ev) {
             const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !s.id.toString().startsWith('vline-')) : [];
             const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !a.id.toString().startsWith('ann-')) : [];
 
-            const markShapes = (marks || []).map((idx, i) => {
+            // sólo marcas visibles dentro del intervalo [startIndex, endIndex)
+            const visibleMarks = (marksAll || []).filter(idx => idx >= startIndex && idx < endIndex);
+            const markShapes = visibleMarks.map((idx) => {
               const x = fullX[idx];
               return {
                 type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
                 // línea fina y gris claro
-                line: { color: '#d0d0d0', width: 1 }, id: 'vline-' + (i+1), editable: true
+                line: { color: '#d0d0d0', width: 1 }, id: 'vline-index-' + idx, editable: true
               };
             });
 
-            const markAnns = (marks || []).map((idx, i) => ({
+            const markAnns = visibleMarks.map((idx) => ({
               x: fullX[idx], y: 1.01, xref: 'x', yref: 'paper', text: String(fullX[idx]), showarrow: false,
-              align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', font: { color: '#d9534f', size: 12 }, id: 'ann-' + (i+1)
+              align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', font: { color: '#d9534f', size: 12 }, id: 'ann-index-' + idx
             }));
 
 
@@ -244,7 +246,7 @@ input.addEventListener('change', function (ev) {
 
             // Añadir puntos rojos en cada traza visible en la posición de cada marca
             // Para cada marca, por cada canal seleccionado, buscamos el valor Y más cercano
-            (marks || []).forEach((idx) => {
+            visibleMarks.forEach((idx) => {
               const xval = fullX[idx];
               sel.forEach((chIdx, i) => {
                 const yaxisName = i === 0 ? 'y' : 'y' + (i+1);
@@ -313,9 +315,9 @@ input.addEventListener('change', function (ev) {
 
             // índice más cercano en fullX
             const idx = findIndex(fullX, xval);
-            if (marks.includes(idx)) return;
-            marks.push(idx);
-            marks.sort((a,b) => a - b);
+            if (marksAll.includes(idx)) return;
+            marksAll.push(idx);
+            marksAll.sort((a,b) => a - b);
 
             // re-renderizar la ventana actual para que marks se inyecten en layout
             const start = Number(slider ? slider.value : 0);
@@ -366,15 +368,32 @@ input.addEventListener('change', function (ev) {
             const updated = Object.keys(eventdata).filter(k => k.startsWith('shapes[') && (k.endsWith('.x0') || k.endsWith('.x1')));
             if (updated.length === 0) return;
 
-            const curShapes = Array.isArray(myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => s.id && s.id.toString().startsWith('vline-')) : [];
-            const idxs = curShapes.map(s => {
+            // para cada shape actual con id 'vline-index-<oldIdx>' obtener su x y mapear a nuevo índice
+            const curShapes = Array.isArray(myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => s.id && s.id.toString().startsWith('vline-index-')) : [];
+            // crear mapa oldIdx -> newIdx
+            const updates = {};
+            curShapes.forEach(s => {
+              const m = String(s.id).match(/vline-index-(\d+)/);
+              if (!m) return;
+              const oldIdx = Number(m[1]);
               const x = s.x0 !== undefined ? Number(s.x0) : (s.x1 !== undefined ? Number(s.x1) : null);
-              return x === null ? null : findIndex(fullX, x);
-            }).filter(i => i !== null);
+              if (x === null) return;
+              const newIdx = findIndex(fullX, x);
+              updates[oldIdx] = newIdx;
+            });
 
-            idxs.sort((a,b) => a - b);
-            marks.length = 0;
-            idxs.forEach(i => marks.push(i));
+            // aplicar updates en marksAll: reemplazar cada oldIdx por newIdx si existe
+            Object.keys(updates).forEach(k => {
+              const oldI = Number(k);
+              const newI = updates[k];
+              const pos = marksAll.indexOf(oldI);
+              if (pos !== -1) marksAll[pos] = newI;
+            });
+            // dedupe y ordenar
+            const unique = Array.from(new Set(marksAll));
+            unique.sort((a,b) => a - b);
+            marksAll.length = 0;
+            unique.forEach(v => marksAll.push(v));
 
             const start = Number(slider ? slider.value : 0);
             const end = Math.min(fullX.length, start + windowSize);
