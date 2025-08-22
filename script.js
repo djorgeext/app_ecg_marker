@@ -336,7 +336,7 @@ input.addEventListener('change', function (ev) {
             });
           }
 
-          // botón para descargar marcas como float32 (binario)
+          // botón para descargar marcas como texto legible (.txt) con un valor por línea
           const downloadBtn = document.getElementById('downloadMarks');
           if (downloadBtn) {
             downloadBtn.addEventListener('click', () => {
@@ -344,19 +344,14 @@ input.addEventListener('change', function (ev) {
                 alert('No hay marcas para descargar');
                 return;
               }
-              // convertir índices a tiempo (float32)
-              const floats = new Float32Array(marksAll.length);
-              for (let i = 0; i < marksAll.length; i++) {
-                const idx = marksAll[i];
-                floats[i] = Number(fullX[idx]) || 0.0;
-              }
-              // crear blob binario con float32 little-endian
-              const buffer = floats.buffer;
-              const blob = new Blob([buffer], { type: 'application/octet-stream' });
+              // convertir índices a tiempo (string) y unir por saltos de línea
+              const lines = marksAll.map(idx => String(Number(fullX[idx]) || 0.0));
+              const text = lines.join('\n') + '\n';
+              const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = 'marks_float32.bin';
+              a.download = 'marks.txt';
               document.body.appendChild(a);
               a.click();
               a.remove();
