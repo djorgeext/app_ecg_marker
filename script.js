@@ -325,11 +325,11 @@ input.addEventListener('change', function (ev) {
             renderWindow(start, end);
           });
 
-          // botón para borrar marcas
+          // botón para borrar marcas (limpia la lista maestra marksAll)
           const clearBtn = document.getElementById('clearMarks');
           if (clearBtn) {
             clearBtn.addEventListener('click', () => {
-              marks.length = 0;
+              marksAll.length = 0;
               const start = Number(slider ? slider.value : 0);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);
