@@ -78,14 +78,15 @@ input.addEventListener('change', function (ev) {
 
           // estado y referencias (asegura que están definidas antes de usarse)
           const fullX = time; // array completo de tiempos
-          const windowSize = 1000; // puntos visibles por defecto
+          let windowSize = 1000; // puntos visibles por defecto (mutable para zoom)
           const maxRender = 5000;  // máximo de puntos sin decimar
           const myPlot = document.getElementById('myDiv');
           const slider = document.getElementById('navigator');
           const navInfo = document.getElementById('navigatorInfo');
 
-          // marcas (coordenadas X) persistentes — declarar antes de renderWindow
+          // marcas persistentes: guardamos índices de muestra (enteros) para evitar desalineos
           const marks = [];
+          // exponer marks para debugging (índices)
           window.marks = marks;
 
           // helper: búsqueda binaria (primer índice con arr[i] >= val)
@@ -223,18 +224,45 @@ input.addEventListener('change', function (ev) {
             const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !s.id.toString().startsWith('vline-')) : [];
             const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !a.id.toString().startsWith('ann-')) : [];
 
-            const markShapes = (marks || []).map((x, i) => ({
-              type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
-              line: { color: 'red', width: 2 }, id: 'vline-' + (i+1), editable: true
+            const markShapes = (marks || []).map((idx, i) => {
+              const x = fullX[idx];
+              return {
+                type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
+                // línea fina y gris claro
+                line: { color: '#d0d0d0', width: 1 }, id: 'vline-' + (i+1), editable: true
+              };
+            });
+
+            const markAnns = (marks || []).map((idx, i) => ({
+              x: fullX[idx], y: 1.01, xref: 'x', yref: 'paper', text: String(fullX[idx]), showarrow: false,
+              align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', font: { color: '#d9534f', size: 12 }, id: 'ann-' + (i+1)
             }));
 
-            const markAnns = (marks || []).map((x, i) => ({
-              x: x, y: 1.01, xref: 'x', yref: 'paper', text: String(x), showarrow: false,
-              align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: 'red', font: { color: 'red', size: 12 }, id: 'ann-' + (i+1)
-            }));
 
             layout.shapes = existingShapes.concat(markShapes);
             layout.annotations = existingAnns.concat(markAnns);
+
+            // Añadir puntos rojos en cada traza visible en la posición de cada marca
+            // Para cada marca, por cada canal seleccionado, buscamos el valor Y más cercano
+            (marks || []).forEach((idx) => {
+              const xval = fullX[idx];
+              sel.forEach((chIdx, i) => {
+                const yaxisName = i === 0 ? 'y' : 'y' + (i+1);
+                const yval = channels[chIdx] && channels[chIdx][idx] !== undefined ? channels[chIdx][idx] : null;
+                if (yval === null || yval === undefined) return;
+                // crear traza de marcador puntual
+                dataOut.push({
+                  x: [xval],
+                  y: [yval],
+                  type: 'scatter',
+                  mode: 'markers',
+                  marker: { color: 'red', size: 6 },
+                  showlegend: false,
+                  hoverinfo: 'skip',
+                  yaxis: yaxisName
+                });
+              });
+            });
 
             // pasar editable:true en config para permitir arrastrar shapes/annotations
             Plotly.react(myPlot, dataOut, layout, {displayModeBar: true, editable: true});
@@ -283,9 +311,11 @@ input.addEventListener('change', function (ev) {
             if (!pts) return;
             const xval = pts[0].x;
 
-            // evitar duplicados
-            if (marks.some(m => m === xval)) return;
-            marks.push(xval);
+            // índice más cercano en fullX
+            const idx = findIndex(fullX, xval);
+            if (marks.includes(idx)) return;
+            marks.push(idx);
+            marks.sort((a,b) => a - b);
 
             // re-renderizar la ventana actual para que marks se inyecten en layout
             const start = Number(slider ? slider.value : 0);
@@ -314,29 +344,38 @@ input.addEventListener('change', function (ev) {
             let endIndex = Math.min(fullX.length, findIndex(fullX, right) + 1);
             if (endIndex <= startIndex) endIndex = Math.min(fullX.length, startIndex + windowSize);
 
-            // si la ventana es muy grande, actualizar slider y renderWindow con decimación
-            if (slider && navInfo) {
-              slider.value = startIndex;
-              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length}`;
+            // recalcular windowSize según el zoom actual
+            windowSize = endIndex - startIndex;
+
+            // actualizar slider.max para que el rango se ajuste a la nueva ventana
+            if (slider) {
+              slider.max = Math.max(0, fullX.length - windowSize);
+              // si startIndex está fuera del nuevo rango, recotizar
+              slider.value = Math.min(Math.max(0, startIndex), slider.max);
             }
+
+            if (slider && navInfo) {
+              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length} (window ${windowSize} pts)`;
+            }
+
             renderWindow(startIndex, endIndex);
           });
 
-          // detectar movimiento de shapes (drag) y sincronizar marks
+          // detectar movimiento de shapes (drag) y sincronizar marks (convertir x de shape a índice)
           myPlot.on('plotly_relayout', function(eventdata){
-            // eventos de shape edit vienen como 'shapes[i].x0' o similar
             const updated = Object.keys(eventdata).filter(k => k.startsWith('shapes[') && (k.endsWith('.x0') || k.endsWith('.x1')));
             if (updated.length === 0) return;
 
-            // reconstruir marks leyendo current shapes con prefijo vline-
             const curShapes = Array.isArray(myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => s.id && s.id.toString().startsWith('vline-')) : [];
-            // extraer x positions (usar x0)
-            const xs = curShapes.map(s => s.x0).filter(x => x !== undefined).map(x => Number(x));
-            // ordenar y actualizar marks
-            xs.sort((a,b) => a - b);
+            const idxs = curShapes.map(s => {
+              const x = s.x0 !== undefined ? Number(s.x0) : (s.x1 !== undefined ? Number(s.x1) : null);
+              return x === null ? null : findIndex(fullX, x);
+            }).filter(i => i !== null);
+
+            idxs.sort((a,b) => a - b);
             marks.length = 0;
-            xs.forEach(x => marks.push(x));
-            // re-render para que annotations coincidan con shapes
+            idxs.forEach(i => marks.push(i));
+
             const start = Number(slider ? slider.value : 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
