@@ -1,6 +1,12 @@
 <!doctype html>
 <html>
 <head>
+  <style>
+    /* Permitir que los clicks atraviesen las shapes (líneas verticales) */
+    g.shapelayer path, g.shapelayer line {
+      pointer-events: none;
+    }
+  </style>
   <!-- Plotly.js -->
   <script src="./node_modules/plotly.js-dist-min/plotly.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>

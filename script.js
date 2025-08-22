@@ -88,6 +88,8 @@ input.addEventListener('change', function (ev) {
           const marksAll = [];
           // exponer marksAll para debugging (índices)
           window.marksAll = marksAll;
+          // tolerancia dinámica para toggle por índice (depende de la decimación actual)
+          let currentIndexTol = 1;
 
           // helper: búsqueda binaria (primer índice con arr[i] >= val)
           const findIndex = (arr, val) => {
@@ -200,6 +202,10 @@ input.addEventListener('change', function (ev) {
 
             // construir trazas (una por canal seleccionada)
             const maxPerTrace = Math.max(1000, Math.floor(maxRender / Math.max(1, m))); // reparto de decimación
+            // calcular y guardar tolerancia de índice según stride de decimación
+            const nSlice = Math.max(1, endIndex - startIndex);
+            const step = Math.ceil(nSlice / maxPerTrace);
+            currentIndexTol = Math.max(1, Math.ceil(step / 2));
             sel.forEach((chIdx, i) => {
               const xs = fullX.slice(startIndex, endIndex);
               const ys = channels[chIdx].slice(startIndex, endIndex);
@@ -226,12 +232,13 @@ input.addEventListener('change', function (ev) {
 
             // sólo marcas visibles dentro del intervalo [startIndex, endIndex)
             const visibleMarks = (marksAll || []).filter(idx => idx >= startIndex && idx < endIndex);
-            const markShapes = visibleMarks.map((idx) => {
+      const markShapes = visibleMarks.map((idx) => {
               const x = fullX[idx];
               return {
                 type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
                 // línea fina y gris claro
-                line: { color: '#d0d0d0', width: 1 }, id: 'vline-index-' + idx, editable: true
+                line: { color: '#d0d0d0', width: 1 }, id: 'vline-index-' + idx,
+                layer: 'below'
               };
             });
 
@@ -244,8 +251,22 @@ input.addEventListener('change', function (ev) {
             layout.shapes = existingShapes.concat(markShapes);
             layout.annotations = existingAnns.concat(markAnns);
 
-            // Añadir puntos rojos en cada traza visible en la posición de cada marca
-            // Para cada marca, por cada canal seleccionado, buscamos el valor Y más cercano
+            // Precalcular rangos Y por subplot para trazar capturadores verticales
+            const yRanges = sel.map((chIdx) => {
+              const seg = channels[chIdx].slice(startIndex, endIndex);
+              let min = Infinity, max = -Infinity;
+              for (let k = 0; k < seg.length; k++) {
+                const v = seg[k];
+                if (v == null) continue;
+                if (v < min) min = v;
+                if (v > max) max = v;
+              }
+              if (!isFinite(min) || !isFinite(max)) { min = -1; max = 1; }
+              const pad = (max - min) * 0.05 || 1; // 5% padding o 1 si plano
+              return { min: min - pad, max: max + pad };
+            });
+
+            // Añadir puntos rojos y trazas invisibles capturadoras en cada subplot para cada marca
             visibleMarks.forEach((idx) => {
               const xval = fullX[idx];
               sel.forEach((chIdx, i) => {
@@ -258,9 +279,32 @@ input.addEventListener('change', function (ev) {
                   y: [yval],
                   type: 'scatter',
                   mode: 'markers',
-                  marker: { color: 'red', size: 6 },
+      marker: { color: 'red', size: 12 },
                   showlegend: false,
+      hoverinfo: 'skip',
+      customdata: [idx],
+                  yaxis: yaxisName
+                });
+                // crear una traza invisible con muchos puntos a lo largo de la línea para capturar clicks
+                const rng = yRanges[i] || { min: yval - 1, max: yval + 1 };
+                const S = 101; // puntos verticales densos para ampliar zona clicable
+                const ysCap = [];
+                const xsCap = [];
+                for (let s = 0; s < S; s++) {
+                  const t = s / (S - 1);
+                  ysCap.push(rng.min + t * (rng.max - rng.min));
+                  xsCap.push(xval);
+                }
+                dataOut.push({
+                  x: xsCap,
+                  y: ysCap,
+                  type: 'scatter',
+                  mode: 'markers',
+                  marker: { size: 24, color: 'rgba(0,0,0,0.01)', line: { width: 0 } },
+                  opacity: 1, // casi transparente pero clicable
                   hoverinfo: 'skip',
+                  showlegend: false,
+                  customdata: new Array(S).fill(idx),
                   yaxis: yaxisName
                 });
               });
@@ -311,15 +355,83 @@ input.addEventListener('change', function (ev) {
           myPlot.on('plotly_click', function(evt){
             const pts = evt.points && evt.points.length ? evt.points : null;
             if (!pts) return;
-            const xval = pts[0].x;
+            // preferir cualquier punto con customdata (marca) dentro de los clicados
+            const markPt = pts.find(p => p && p.customdata != null);
+            const p0 = markPt || pts[0];
+            // Si el punto clicado es un marcador de marca (customdata con idx), usarlo directamente
+            if (p0 && p0.customdata != null) {
+              const mIdx = Array.isArray(p0.customdata) ? p0.customdata[0] : p0.customdata;
+              const pos = marksAll.indexOf(Number(mIdx));
+              if (pos !== -1) {
+                marksAll.splice(pos, 1);
+              } else {
+                marksAll.push(Number(mIdx));
+                marksAll.sort((a,b) => a - b);
+              }
+              const start = Number(slider ? slider.value : 0);
+              const end = Math.min(fullX.length, start + windowSize);
+              renderWindow(start, end);
+              return;
+            }
+
+            const xval = p0.x;
 
             // índice más cercano en fullX
-            const idx = findIndex(fullX, xval);
-            if (marksAll.includes(idx)) return;
-            marksAll.push(idx);
-            marksAll.sort((a,b) => a - b);
+            const xNum = Number(xval);
+            const idx = findIndex(fullX, xNum);
+            // Tolerancia en X: mitad de dt o 1% del ancho de la vista actual (lo que sea mayor)
+            const dt = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) : 0;
+            const startForTol = Number(slider ? slider.value : 0);
+            const endForTol = Math.min(fullX.length, startForTol + windowSize);
+            const leftX = (startForTol < fullX.length) ? Number(fullX[startForTol]) : xNum;
+            const rightX = (endForTol-1 >= 0 && endForTol-1 < fullX.length) ? Number(fullX[endForTol-1]) : xNum;
+            const viewWidth = Math.abs(rightX - leftX);
+            const tolX = Math.max(Math.abs(dt) * 1.5, viewWidth * 0.01, 1e-9);
+
+            // Buscar la marca más cercana por X
+            let nearestPos = -1;
+            let nearestDX = Infinity;
+            for (let i = 0; i < marksAll.length; i++) {
+              const xm = Number(fullX[marksAll[i]]);
+              if (!isFinite(xm)) continue;
+              const d = Math.abs(xm - xNum);
+              if (d < nearestDX) {
+                nearestDX = d;
+                nearestPos = i;
+              }
+            }
+
+            if (nearestPos !== -1 && nearestDX <= tolX) {
+              // Quitar marca existente cercana
+              marksAll.splice(nearestPos, 1);
+            } else {
+              // Añadir nueva marca en el índice más cercano
+              marksAll.push(idx);
+            }
+            // dedupe & ordenar
+            const uniq = Array.from(new Set(marksAll));
+            uniq.sort((a,b) => a - b);
+            marksAll.length = 0;
+            uniq.forEach(v => marksAll.push(v));
 
             // re-renderizar la ventana actual para que marks se inyecten en layout
+            const start = Number(slider ? slider.value : 0);
+            const end = Math.min(fullX.length, start + windowSize);
+            renderWindow(start, end);
+          });
+
+          // permitir toggle también al hacer click sobre la etiqueta (annotation)
+          myPlot.on('plotly_clickannotation', function(e){
+            if (!e || !e.annotation || !e.annotation.id) return;
+            const m = String(e.annotation.id).match(/ann-index-(\d+)/);
+            if (!m) return;
+            const idx = Number(m[1]);
+            const pos = marksAll.indexOf(idx);
+            if (pos !== -1) marksAll.splice(pos, 1);
+            else {
+              marksAll.push(idx);
+              marksAll.sort((a,b) => a - b);
+            }
             const start = Number(slider ? slider.value : 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
