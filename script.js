@@ -20,7 +20,7 @@ input.addEventListener('change', function (ev) {
     statusOutput.innerText = 'No file selected';
         return;
     }
-  statusOutput.innerText = `Loading ${f.name} (${f.size} bytes)...`;
+  statusOutput.innerText = `Loading ${f.name}`;
     const fr = new FileReader();
 
     fr.onerror = () => {
@@ -429,7 +429,7 @@ input.addEventListener('change', function (ev) {
           if (downloadBtn) {
             downloadBtn.addEventListener('click', () => {
               if (!Array.isArray(marksAll) || marksAll.length === 0) {
-                alert('No hay marcas para descargar');
+                alert('There are no marks to download');
                 return;
               }
               // convertir índices a tiempo (string) y unir por saltos de línea
