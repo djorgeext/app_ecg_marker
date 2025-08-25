@@ -251,22 +251,7 @@ input.addEventListener('change', function (ev) {
             layout.shapes = existingShapes.concat(markShapes);
             layout.annotations = existingAnns.concat(markAnns);
 
-            // Precalcular rangos Y por subplot para trazar capturadores verticales
-            const yRanges = sel.map((chIdx) => {
-              const seg = channels[chIdx].slice(startIndex, endIndex);
-              let min = Infinity, max = -Infinity;
-              for (let k = 0; k < seg.length; k++) {
-                const v = seg[k];
-                if (v == null) continue;
-                if (v < min) min = v;
-                if (v > max) max = v;
-              }
-              if (!isFinite(min) || !isFinite(max)) { min = -1; max = 1; }
-              const pad = (max - min) * 0.05 || 1; // 5% padding o 1 si plano
-              return { min: min - pad, max: max + pad };
-            });
-
-            // Añadir puntos rojos y trazas invisibles capturadoras en cada subplot para cada marca
+    // Añadir puntos rojos en cada subplot para cada marca
             visibleMarks.forEach((idx) => {
               const xval = fullX[idx];
               sel.forEach((chIdx, i) => {
@@ -279,32 +264,10 @@ input.addEventListener('change', function (ev) {
                   y: [yval],
                   type: 'scatter',
                   mode: 'markers',
-      marker: { color: 'red', size: 12 },
+  marker: { color: 'red', size: 8 },
                   showlegend: false,
       hoverinfo: 'skip',
       customdata: [idx],
-                  yaxis: yaxisName
-                });
-                // crear una traza invisible con muchos puntos a lo largo de la línea para capturar clicks
-                const rng = yRanges[i] || { min: yval - 1, max: yval + 1 };
-                const S = 101; // puntos verticales densos para ampliar zona clicable
-                const ysCap = [];
-                const xsCap = [];
-                for (let s = 0; s < S; s++) {
-                  const t = s / (S - 1);
-                  ysCap.push(rng.min + t * (rng.max - rng.min));
-                  xsCap.push(xval);
-                }
-                dataOut.push({
-                  x: xsCap,
-                  y: ysCap,
-                  type: 'scatter',
-                  mode: 'markers',
-                  marker: { size: 24, color: 'rgba(0,0,0,0.01)', line: { width: 0 } },
-                  opacity: 1, // casi transparente pero clicable
-                  hoverinfo: 'skip',
-                  showlegend: false,
-                  customdata: new Array(S).fill(idx),
                   yaxis: yaxisName
                 });
               });
