@@ -1,7 +1,11 @@
-// Script mínimo: lee el archivo .vak, separa por líneas, elimina cabecera,
-// divide por tab '\t', convierte a número la primera columna (time) y la muestra.
+// Minimal script: reads .vak file, splits lines, removes header,
+// splits by tab '\t', converts first column (time) to number and plots it.
 const input = document.getElementById('fileInput');
 const statusOutput = document.getElementById('statusOutput');
+const loadFileBtn = document.getElementById('loadFileBtn');
+if (loadFileBtn && input) {
+  loadFileBtn.addEventListener('click', () => input.click());
+}
 const getTrace = (parsedArr, column) => parsedArr.map(row => {
             const raw = row[column] !== undefined ? row[column].trim() : '';
             if (raw === '') return null;
@@ -11,41 +15,41 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
 
 input.addEventListener('change', function (ev) {
     const f = ev.target.files && ev.target.files[0];
-    if (!f) {
-        console.warn('No file selected');
-        statusOutput.innerText = 'No se seleccionó archivo';
+  if (!f) {
+    console.warn('No file selected');
+    statusOutput.innerText = 'No file selected';
         return;
     }
-    statusOutput.innerText = `Leyendo ${f.name} (${f.size} bytes)...`;
+  statusOutput.innerText = `Loading ${f.name} (${f.size} bytes)...`;
     const fr = new FileReader();
 
     fr.onerror = () => {
         console.error('FileReader error', fr.error);
-        statusOutput.innerText = 'Error leyendo archivo (ver consola)';
+  statusOutput.innerText = 'Error reading file (see console)';
     };
 
     fr.onload = (e) => {
         try {
           const text = e.target.result;
           if (!text) {
-            console.warn('Archivo vacío');
-            statusOutput.innerText = 'Archivo vacío';
+            console.warn('Empty file');
+            statusOutput.innerText = 'Empty file';
             return;
           }
 
           // 1) separar líneas (maneja \r\n y \n)
           const rawLines = text.split(/\r?\n/);
-          console.log('líneas totales leídas (incluye header y vacías):', rawLines.length);
+          console.log('total lines read (includes header and empty):', rawLines.length);
 
           // 2) primeras 8 líneas crudas para inspección
-          console.log('--- primeras líneas crudas ---');
+          console.log('--- first raw lines ---');
           rawLines.slice(0,8).forEach((l,i) => console.log(i, JSON.stringify(l)));
 
           // 3) eliminar líneas vacías (si las hubiera)
           const lines = rawLines.filter(l => l.trim().length > 0);
           if (lines.length <= 1) {
-            console.warn('Muy pocas líneas útiles (quizás solo header)');
-            statusOutput.innerText = 'Pocas líneas útiles';
+            console.warn('Too few useful lines (maybe header only)');
+            statusOutput.innerText = 'Too few useful lines';
             return;
           }
 
@@ -114,23 +118,23 @@ input.addEventListener('change', function (ev) {
             return { x: nx, y: ny };
           };
 
-           // --- UI: generar checkboxes en panel derecho ---
+           // --- UI: build checkboxes in right panel ---
            const channelListDiv = document.getElementById('channelList');
            const allCheckbox = document.getElementById('ch_all');
            const showBtn = document.getElementById('showSelected');
 
-           // crea checkboxes para 12 canales
+           // create checkboxes for 12 channels
            channelListDiv.innerHTML = '';
            channels.forEach((_, idx) => {
              const n = idx + 1;
              const wrapper = document.createElement('div');
-             // marcar por defecto solo los primeros 3 canales
+             // default: first 3 channels checked
              const isChecked = idx < 3 ? 'checked' : '';
              wrapper.innerHTML = `<label style="display:block"><input type="checkbox" class="ch_cb" data-idx="${idx}" ${isChecked} /> Ch${n}</label>`;
              channelListDiv.appendChild(wrapper);
            });
 
-          // helper: lee selección
+          // helper: read selection
           const getSelectedIndices = () => {
             const cbs = Array.from(document.querySelectorAll('.ch_cb'));
             const selected = cbs.filter(cb => cb.checked).map(cb => Number(cb.dataset.idx));
@@ -138,7 +142,7 @@ input.addEventListener('change', function (ev) {
             return selected;
           };
 
-          // sincronizar "Todos" checkbox
+          // sync "All" checkbox
           const syncAllCheckbox = () => {
             const cbs = Array.from(document.querySelectorAll('.ch_cb'));
             const allChecked = cbs.length > 0 && cbs.every(cb => cb.checked);
@@ -151,14 +155,14 @@ input.addEventListener('change', function (ev) {
               cbs.forEach(cb => cb.checked = allCheckbox.checked);
             });
           }
-          // inicializar estado de "Todos" según checkboxes creados (primeros 3 checked)
+          // initialize "All" checkbox state (first 3 checked by default)
           syncAllCheckbox();
 
           // --- render dinámico: dibuja las derivaciones apiladas ---
           const renderWindow = (startIndex, endIndex) => {
              const sel = getSelectedIndices();
              if (sel.length === 0) {
-               // nada seleccionado: limpiar gráfico
+               // nothing selected: clear plot
                Plotly.purge(myPlot);
                return;
              }
@@ -169,8 +173,8 @@ input.addEventListener('change', function (ev) {
             const h = (1 - totalGap) / m;
 
             const dataOut = [];
-            // calcular altura dinámica para que los subplots llenen el contenedor myDiv
-            // usamos el tamaño real del contenedor si está disponible
+            // dynamic height so subplots fill the container
+            // use actual container size if available
             let containerHeight = 600; // fallback
             try {
               const rect = myPlot.getBoundingClientRect();
@@ -182,11 +186,10 @@ input.addEventListener('change', function (ev) {
             const layout = {
               showlegend: false,
               margin: { t: 40, r: 20, l: 50, b: 40 },
-              height: Math.max(containerHeight, 120 * m),
-              xaxis: { showgrid: false } // el eje x común (se mostrará en el bottom)
+              height: Math.max(containerHeight, 120 * m)
             };
 
-            // crear dominios y yaxes
+            // create domains and y-axes
             for (let i = 0; i < m; i++) {
               const top = 1 - i * (h + gap);
               const bottom = top - h;
@@ -194,10 +197,13 @@ input.addEventListener('change', function (ev) {
               layout[yName] = {
                 domain: [bottom, top],
                 anchor: 'x',
-                showgrid: false,
-                zeroline: false
+                showgrid: true,
+                gridcolor: '#e5e7eb',
+                gridwidth: 1,
+                zeroline: false,
+                layer: 'below traces'
               };
-              // mostrar ticks sólo en el eje central o a la izquierda? dejamos ticks en cada subplot
+              // leave ticks on every subplot
             }
 
             // construir trazas (una por canal seleccionada)
@@ -223,14 +229,21 @@ input.addEventListener('change', function (ev) {
               dataOut.push(trace);
             });
 
-            // X axis: sólo mostrar labels en la última (inferior) y axis
-            layout.xaxis = { anchor: 'y' + (m === 1 ? '' : (m)), showgrid: false };
+            // X axis: anchor to last y axis
+            layout.xaxis = {
+              anchor: 'y' + (m === 1 ? '' : (m)),
+              showgrid: true,
+              gridcolor: '#e5e7eb',
+              gridwidth: 1,
+              zeroline: false,
+              layer: 'below traces'
+            };
 
-            // incorporar marcas persistentes (shapes y annotations) en el layout
+            // inject persistent marks (shapes and annotations) into layout
             const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !s.id.toString().startsWith('vline-')) : [];
             const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !a.id.toString().startsWith('ann-')) : [];
 
-            // sólo marcas visibles dentro del intervalo [startIndex, endIndex)
+            // only marks visible within [startIndex, endIndex)
             const visibleMarks = (marksAll || []).filter(idx => idx >= startIndex && idx < endIndex);
       const markShapes = visibleMarks.map((idx) => {
               const x = fullX[idx];
@@ -251,7 +264,7 @@ input.addEventListener('change', function (ev) {
             layout.shapes = existingShapes.concat(markShapes);
             layout.annotations = existingAnns.concat(markAnns);
 
-    // Añadir puntos rojos en cada subplot para cada marca
+  // Add red points at intersections per subplot per mark
             visibleMarks.forEach((idx) => {
               const xval = fullX[idx];
               sel.forEach((chIdx, i) => {
@@ -277,35 +290,35 @@ input.addEventListener('change', function (ev) {
             Plotly.react(myPlot, dataOut, layout, {displayModeBar: true, editable: true});
           };
 
-          // estado inicial: mostrar primeros 3 canales
-          // aseguramos que la UI refleje que los primeros 3 están marcados por defecto
+          // initial state: show first 3 channels
+          // ensure UI reflects first 3 checked by default
           const initialStart = 0;
           const initialEnd = Math.min(fullX.length, initialStart + windowSize);
-          // si existe el slider/contadores, inicializar
+          // if slider/info exists, initialize
           if (slider && navInfo) {
             slider.max = Math.max(0, fullX.length - windowSize);
             slider.step = 1;
             slider.value = 0;
-            navInfo.innerText = `Ventana: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
+            navInfo.innerText = `Window: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
           }
           renderWindow(initialStart, initialEnd);
 
-          // slider -> ventana
+          // slider -> window
           if (slider && navInfo) {
             slider.max = Math.max(0, fullX.length - windowSize);
             slider.step = 1;
             slider.value = 0;
-            navInfo.innerText = `Ventana: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
+            navInfo.innerText = `Window: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
 
             slider.addEventListener('input', () => {
               const start = Number(slider.value);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);
-              navInfo.innerText = `Ventana: ${start} - ${end} / ${fullX.length}`;
+              navInfo.innerText = `Window: ${start} - ${end} / ${fullX.length}`;
             });
           }
 
-          // boton mostrar aplica selección actual
+          // "Show" applies current selection
           if (showBtn) {
             showBtn.addEventListener('click', () => {
               const start = Number(slider ? slider.value : 0);
@@ -314,14 +327,14 @@ input.addEventListener('change', function (ev) {
             });
           }
 
-          // marcar puntos: cada click añade una línea vertical roja persistente y guarda X en marks
+          // clicking adds/removes a vertical line mark and persists via indices
           myPlot.on('plotly_click', function(evt){
             const pts = evt.points && evt.points.length ? evt.points : null;
             if (!pts) return;
-            // preferir cualquier punto con customdata (marca) dentro de los clicados
+            // prefer any point with customdata (mark) among clicked points
             const markPt = pts.find(p => p && p.customdata != null);
             const p0 = markPt || pts[0];
-            // Si el punto clicado es un marcador de marca (customdata con idx), usarlo directamente
+            // If clicked a mark's red point (customdata with index), toggle directly
             if (p0 && p0.customdata != null) {
               const mIdx = Array.isArray(p0.customdata) ? p0.customdata[0] : p0.customdata;
               const pos = marksAll.indexOf(Number(mIdx));
@@ -339,10 +352,10 @@ input.addEventListener('change', function (ev) {
 
             const xval = p0.x;
 
-            // índice más cercano en fullX
+            // closest index in fullX
             const xNum = Number(xval);
             const idx = findIndex(fullX, xNum);
-            // Tolerancia en X: mitad de dt o 1% del ancho de la vista actual (lo que sea mayor)
+            // X tolerance: half dt or 1% of current view width, whichever is larger
             const dt = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) : 0;
             const startForTol = Number(slider ? slider.value : 0);
             const endForTol = Math.min(fullX.length, startForTol + windowSize);
@@ -351,7 +364,7 @@ input.addEventListener('change', function (ev) {
             const viewWidth = Math.abs(rightX - leftX);
             const tolX = Math.max(Math.abs(dt) * 1.5, viewWidth * 0.01, 1e-9);
 
-            // Buscar la marca más cercana por X
+            // find nearest existing mark by X
             let nearestPos = -1;
             let nearestDX = Infinity;
             for (let i = 0; i < marksAll.length; i++) {
@@ -365,10 +378,10 @@ input.addEventListener('change', function (ev) {
             }
 
             if (nearestPos !== -1 && nearestDX <= tolX) {
-              // Quitar marca existente cercana
+              // remove existing nearby mark
               marksAll.splice(nearestPos, 1);
             } else {
-              // Añadir nueva marca en el índice más cercano
+              // add new mark at nearest index
               marksAll.push(idx);
             }
             // dedupe & ordenar
@@ -377,13 +390,13 @@ input.addEventListener('change', function (ev) {
             marksAll.length = 0;
             uniq.forEach(v => marksAll.push(v));
 
-            // re-renderizar la ventana actual para que marks se inyecten en layout
+            // re-render current window so marks render
             const start = Number(slider ? slider.value : 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
           });
 
-          // permitir toggle también al hacer click sobre la etiqueta (annotation)
+          // also allow toggling by clicking the annotation label
           myPlot.on('plotly_clickannotation', function(e){
             if (!e || !e.annotation || !e.annotation.id) return;
             const m = String(e.annotation.id).match(/ann-index-(\d+)/);
@@ -400,7 +413,7 @@ input.addEventListener('change', function (ev) {
             renderWindow(start, end);
           });
 
-          // botón para borrar marcas (limpia la lista maestra marksAll)
+          // button: clear marks (empties master marksAll)
           const clearBtn = document.getElementById('clearMarks');
           if (clearBtn) {
             clearBtn.addEventListener('click', () => {
@@ -411,7 +424,7 @@ input.addEventListener('change', function (ev) {
             });
           }
 
-          // botón para descargar marcas como texto legible (.txt) con un valor por línea
+          // button: download marks as plain text (.txt), one time per line
           const downloadBtn = document.getElementById('downloadMarks');
           if (downloadBtn) {
             downloadBtn.addEventListener('click', () => {
@@ -434,7 +447,7 @@ input.addEventListener('change', function (ev) {
             });
           }
 
-          // zoom/relayout -> actualizar datos reales del rango
+          // zoom/relayout -> update actual range
           myPlot.on('plotly_relayout', function(eventdata){
             const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
             const right = eventdata['xaxis.range[1]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][1] : null);
@@ -455,13 +468,13 @@ input.addEventListener('change', function (ev) {
             }
 
             if (slider && navInfo) {
-              navInfo.innerText = `Ventana: ${startIndex} - ${endIndex} / ${fullX.length} (window ${windowSize} pts)`;
+              navInfo.innerText = `Window: ${startIndex} - ${endIndex} / ${fullX.length} (${windowSize} pts)`;
             }
 
             renderWindow(startIndex, endIndex);
           });
 
-          // detectar movimiento de shapes (drag) y sincronizar marks (convertir x de shape a índice)
+          // detect shape drag (if any) and sync marks (map shape x to index)
           myPlot.on('plotly_relayout', function(eventdata){
             const updated = Object.keys(eventdata).filter(k => k.startsWith('shapes[') && (k.endsWith('.x0') || k.endsWith('.x1')));
             if (updated.length === 0) return;
@@ -498,11 +511,11 @@ input.addEventListener('change', function (ev) {
             renderWindow(start, end);
           });
         } catch (err) {
-          console.error('Error procesando archivo:', err);
-          statusOutput.innerText = 'Error procesando archivo (ver consola)';
+          console.error('Error processing file:', err);
+          statusOutput.innerText = 'Error processing file (see console)';
         }
       };
 
-      // leer como UTF-8 (si no es UTF-8, cambia a 'ISO-8859-1' en readAsText)
+  // read as UTF-8 (change to 'ISO-8859-1' if needed)
       fr.readAsText(f, 'UTF-8');
     });

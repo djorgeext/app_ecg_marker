@@ -1,12 +1,9 @@
 <!doctype html>
 <html>
 <head>
-  <style>
-    /* Permitir que los clicks atraviesen las shapes (líneas verticales) */
-    g.shapelayer path, g.shapelayer line {
-      pointer-events: none;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG-Marker</title>
+    <link rel="stylesheet" href="styles.css">
   <!-- Plotly.js -->
   <script src="./node_modules/plotly.js-dist-min/plotly.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>
@@ -32,36 +29,42 @@
   <!-- <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script> -->
 </head>
 <body>
-  <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
-  <div id="statusOutput" style="margin-top:10px;color:darkgreen"></div>
-  <script src="script.js"></script>
-  <div id="myDiv" style="width: calc(100% - 220px); height: 50rem; display:inline-block;"><!-- Plotly chart --></div>
+  <div class="left-panel">
+    <div id="myDiv"><!-- Plotly chart --></div>
 
-  <!-- Navegador grande y legible -->
-  <div style="width: calc(100% - 220px); margin-top:8px; display:inline-block;">
-    <input id="navigator" type="range" min="0" value="0" step="1" style="width:100%;" />
-    <div id="navigatorInfo" style="font-size:0.9rem;color:#333;margin-top:4px;"></div>
+    <!-- Navegador grande y legible -->
+  <div class="navigator-container">
+  <input id="navigator" type="range" min="0" value="0" step="1" />
+  <div id="navigatorInfo"></div>
+    </div>
   </div>
 
-  <!-- Panel derecho: selector de canales -->
-  <aside id="channelPanel" style="width:200px; position:fixed; right:12px; top:60px; bottom:40px; overflow:auto;
-                                   padding:10px; border:1px solid #ddd; background:#fafafa; box-shadow:0 2px 6px rgba(0,0,0,0.08);">
-    <strong>Canales</strong>
-    <div style="margin-top:8px;">
-      <label><input type="checkbox" id="ch_all" /> Todos</label>
-    </div>
-    <div id="channelList" style="margin-top:8px;">
-      <!-- checkboxes generados dinámicamente por script.js -->
-    </div>
-    <div style="margin-top:8px;">
-      <button id="showSelected" style="width:100%">Mostrar</button>
-    </div>
-    <div style="margin-top:8px;">
-      <button id="clearMarks" style="width:100%;">Borrar marcas</button>
-    </div>
-    <div style="margin-top:8px;">
-      <button id="downloadMarks" style="width:100%">Descargar marcas</button>
-    </div>
-  </aside>
+  <!-- Right panel: channel selector -->
+  <div class="right-panel">
+    <aside id="channelPanel">
+      <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
+      <div class="block">
+        <button id="loadFileBtn">Load File</button>
+      </div>
+      <div id="statusOutput"></div>
+      <script src="script.js"></script>
+      <strong>Channels</strong>
+      <div class="block">
+        <label><input type="checkbox" id="ch_all" /> All</label>
+      </div>
+      <div id="channelList" class="block">
+        <!-- checkboxes generados dinámicamente por script.js -->
+      </div>
+      <div class="block">
+        <button id="showSelected">Show</button>
+      </div>
+      <div class="block">
+        <button id="clearMarks">Clear Marks</button>
+      </div>
+      <div class="block">
+        <button id="downloadMarks">Download Marks</button>
+      </div>
+    </aside>
+  </div>
 </body>
 </html>
