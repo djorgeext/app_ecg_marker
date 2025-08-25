@@ -32,10 +32,14 @@
   <div class="left-panel">
     <div id="myDiv"><!-- Plotly chart --></div>
 
-    <!-- Navegador grande y legible -->
-  <div class="navigator-container">
-  <input id="navigator" type="range" min="0" value="0" step="1" />
-  <div id="navigatorInfo"></div>
+    <!-- Navigator: horizontal scrollbar with arrow buttons -->
+    <div class="navigator-container">
+      <div class="scrollbar-container">
+        <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">◀</button>
+        <div id="scrollbar" class="scrollbar"><div id="scrollbarContent"></div></div>
+        <button id="scrollRight" class="scroll-btn" aria-label="Scroll right" title="Right">▶</button>
+      </div>
+      <div id="navigatorInfo"></div>
     </div>
   </div>
 

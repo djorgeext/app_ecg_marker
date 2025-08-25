@@ -85,8 +85,12 @@ input.addEventListener('change', function (ev) {
           let windowSize = 1000; // puntos visibles por defecto (mutable para zoom)
           const maxRender = 5000;  // máximo de puntos sin decimar
           const myPlot = document.getElementById('myDiv');
-          const slider = document.getElementById('navigator');
           const navInfo = document.getElementById('navigatorInfo');
+          // custom scrollbar elements
+          const sb = document.getElementById('scrollbar');
+          const sbContent = document.getElementById('scrollbarContent');
+          const btnLeft = document.getElementById('scrollLeft');
+          const btnRight = document.getElementById('scrollRight');
 
           // marcas persistentes: guardamos índices de muestra (enteros) para evitar desalineos
           const marksAll = [];
@@ -186,7 +190,8 @@ input.addEventListener('change', function (ev) {
             const layout = {
               showlegend: false,
               margin: { t: 40, r: 20, l: 50, b: 40 },
-              height: Math.max(containerHeight, 120 * m)
+              height: Math.max(containerHeight, 120 * m),
+              title: { text: '' }
             };
 
             // create domains and y-axes
@@ -201,7 +206,8 @@ input.addEventListener('change', function (ev) {
                 gridcolor: '#e5e7eb',
                 gridwidth: 1,
                 zeroline: false,
-                layer: 'below traces'
+                layer: 'below traces',
+                title: { text: '' }
               };
               // leave ticks on every subplot
             }
@@ -236,7 +242,8 @@ input.addEventListener('change', function (ev) {
               gridcolor: '#e5e7eb',
               gridwidth: 1,
               zeroline: false,
-              layer: 'below traces'
+              layer: 'below traces',
+              title: { text: '' }
             };
 
             // inject persistent marks (shapes and annotations) into layout
@@ -286,8 +293,19 @@ input.addEventListener('change', function (ev) {
               });
             });
 
-            // pasar editable:true en config para permitir arrastrar shapes/annotations
-            Plotly.react(myPlot, dataOut, layout, {displayModeBar: true, editable: true});
+            // keep editable true, but disable title/axis/annotation edits to remove placeholders
+            Plotly.react(myPlot, dataOut, layout, {
+              displayModeBar: true,
+              editable: true,
+              edits: {
+                titleText: false,
+                axisTitleText: false,
+                annotationText: false,
+                legendPosition: false,
+                colorbarPosition: false,
+                shapePosition: false
+              }
+            });
           };
 
           // initial state: show first 3 channels
@@ -295,33 +313,99 @@ input.addEventListener('change', function (ev) {
           const initialStart = 0;
           const initialEnd = Math.min(fullX.length, initialStart + windowSize);
           // if slider/info exists, initialize
-          if (slider && navInfo) {
-            slider.max = Math.max(0, fullX.length - windowSize);
-            slider.step = 1;
-            slider.value = 0;
-            navInfo.innerText = `Window: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
-          }
+          let maxStart = Math.max(0, fullX.length - windowSize);
+          let currentStart = 0;
+          const updateInfo = (start) => {
+            const end = Math.min(fullX.length, start + windowSize);
+            navInfo.innerText = `Window: ${start} - ${end} / ${fullX.length}`;
+          };
+          updateInfo(0);
+          // initialize scrollbar content width to represent total length vs window
+          const setScrollbar = () => {
+            if (!sb || !sbContent) return;
+            // represent content width proportional to total length; use pixels
+            const ratio = fullX.length > 0 ? (fullX.length / Math.max(windowSize, 1)) : 1;
+            // ensure a reasonable min width to make dragging feasible
+            sbContent.style.width = `${Math.max(ratio * 100, 500)}px`;
+            // sync scrollLeft to currentStart
+            syncScrollToCurrent();
+          };
+          const syncScrollToCurrent = () => {
+            if (!sb || !sbContent) return;
+            const maxScroll = sbContent.scrollWidth - sb.clientWidth;
+            const pos = maxStart > 0 ? (currentStart / maxStart) * maxScroll : 0;
+            sb.scrollLeft = isFinite(pos) ? pos : 0;
+          };
+          setScrollbar();
           renderWindow(initialStart, initialEnd);
 
           // slider -> window
-          if (slider && navInfo) {
-            slider.max = Math.max(0, fullX.length - windowSize);
-            slider.step = 1;
-            slider.value = 0;
-            navInfo.innerText = `Window: 0 - ${Math.min(windowSize, fullX.length)} / ${fullX.length}`;
-
-            slider.addEventListener('input', () => {
-              const start = Number(slider.value);
-              const end = Math.min(fullX.length, start + windowSize);
-              renderWindow(start, end);
-              navInfo.innerText = `Window: ${start} - ${end} / ${fullX.length}`;
+          // scroll -> window mapping
+          if (sb) {
+            sb.addEventListener('scroll', () => {
+              const maxScroll = sbContent.scrollWidth - sb.clientWidth;
+              const frac = maxScroll > 0 ? (sb.scrollLeft / maxScroll) : 0;
+              currentStart = Math.round(frac * maxStart);
+              const end = Math.min(fullX.length, currentStart + windowSize);
+              renderWindow(currentStart, end);
+              updateInfo(currentStart);
             });
           }
+          // arrow buttons
+          const stepSmall = () => Math.max(1, Math.floor(windowSize * 0.1));
+          const stepLarge = () => Math.max(1, Math.floor(windowSize * 0.5));
+          let holdTimer = null;
+          const stopHold = () => { if (holdTimer) { clearInterval(holdTimer); holdTimer = null; } };
+          const startHold = (dir) => {
+            stopHold();
+            const stepHold = () => Math.max(1, Math.floor(windowSize * 0.02));
+            holdTimer = setInterval(() => {
+              currentStart = Math.min(maxStart, Math.max(0, currentStart + (dir === 'left' ? -stepHold() : stepHold())));
+              syncScrollToCurrent();
+            }, 40);
+          };
+          if (btnLeft) {
+            btnLeft.addEventListener('click', (e) => {
+              e.preventDefault();
+              currentStart = Math.max(0, currentStart - stepSmall());
+              syncScrollToCurrent();
+            });
+            btnLeft.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              currentStart = Math.max(0, currentStart - stepLarge());
+              syncScrollToCurrent();
+            });
+            btnLeft.addEventListener('mousedown', (e) => { e.preventDefault(); startHold('left'); });
+            btnLeft.addEventListener('mouseup', stopHold);
+            btnLeft.addEventListener('mouseleave', stopHold);
+            btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); startHold('left'); }, { passive: false });
+            btnLeft.addEventListener('touchend', stopHold);
+            btnLeft.addEventListener('touchcancel', stopHold);
+          }
+          if (btnRight) {
+            btnRight.addEventListener('click', (e) => {
+              e.preventDefault();
+              currentStart = Math.min(maxStart, currentStart + stepSmall());
+              syncScrollToCurrent();
+            });
+            btnRight.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              currentStart = Math.min(maxStart, currentStart + stepLarge());
+              syncScrollToCurrent();
+            });
+            btnRight.addEventListener('mousedown', (e) => { e.preventDefault(); startHold('right'); });
+            btnRight.addEventListener('mouseup', stopHold);
+            btnRight.addEventListener('mouseleave', stopHold);
+            btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); startHold('right'); }, { passive: false });
+            btnRight.addEventListener('touchend', stopHold);
+            btnRight.addEventListener('touchcancel', stopHold);
+          }
+          document.addEventListener('mouseup', stopHold);
 
           // "Show" applies current selection
           if (showBtn) {
             showBtn.addEventListener('click', () => {
-              const start = Number(slider ? slider.value : 0);
+              const start = Number(currentStart || 0);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);
             });
@@ -344,7 +428,7 @@ input.addEventListener('change', function (ev) {
                 marksAll.push(Number(mIdx));
                 marksAll.sort((a,b) => a - b);
               }
-              const start = Number(slider ? slider.value : 0);
+              const start = Number(currentStart || 0);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);
               return;
@@ -357,7 +441,7 @@ input.addEventListener('change', function (ev) {
             const idx = findIndex(fullX, xNum);
             // X tolerance: half dt or 1% of current view width, whichever is larger
             const dt = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) : 0;
-            const startForTol = Number(slider ? slider.value : 0);
+            const startForTol = Number(currentStart || 0);
             const endForTol = Math.min(fullX.length, startForTol + windowSize);
             const leftX = (startForTol < fullX.length) ? Number(fullX[startForTol]) : xNum;
             const rightX = (endForTol-1 >= 0 && endForTol-1 < fullX.length) ? Number(fullX[endForTol-1]) : xNum;
@@ -391,7 +475,7 @@ input.addEventListener('change', function (ev) {
             uniq.forEach(v => marksAll.push(v));
 
             // re-render current window so marks render
-            const start = Number(slider ? slider.value : 0);
+            const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
           });
@@ -408,7 +492,7 @@ input.addEventListener('change', function (ev) {
               marksAll.push(idx);
               marksAll.sort((a,b) => a - b);
             }
-            const start = Number(slider ? slider.value : 0);
+            const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
           });
@@ -418,7 +502,7 @@ input.addEventListener('change', function (ev) {
           if (clearBtn) {
             clearBtn.addEventListener('click', () => {
               marksAll.length = 0;
-              const start = Number(slider ? slider.value : 0);
+              const start = Number(currentStart || 0);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);
             });
@@ -459,17 +543,11 @@ input.addEventListener('change', function (ev) {
 
             // recalcular windowSize según el zoom actual
             windowSize = endIndex - startIndex;
-
-            // actualizar slider.max para que el rango se ajuste a la nueva ventana
-            if (slider) {
-              slider.max = Math.max(0, fullX.length - windowSize);
-              // si startIndex está fuera del nuevo rango, recotizar
-              slider.value = Math.min(Math.max(0, startIndex), slider.max);
-            }
-
-            if (slider && navInfo) {
-              navInfo.innerText = `Window: ${startIndex} - ${endIndex} / ${fullX.length} (${windowSize} pts)`;
-            }
+            // update scrollbar metrics after zoom/pan
+            maxStart = Math.max(0, fullX.length - windowSize);
+            currentStart = Math.min(Math.max(0, startIndex), maxStart);
+            setScrollbar();
+            if (navInfo) navInfo.innerText = `Window: ${startIndex} - ${endIndex} / ${fullX.length} (${windowSize} pts)`;
 
             renderWindow(startIndex, endIndex);
           });
@@ -506,7 +584,7 @@ input.addEventListener('change', function (ev) {
             marksAll.length = 0;
             unique.forEach(v => marksAll.push(v));
 
-            const start = Number(slider ? slider.value : 0);
+            const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
           });
