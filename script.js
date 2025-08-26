@@ -92,10 +92,16 @@ input.addEventListener('change', function (ev) {
           const btnLeft = document.getElementById('scrollLeft');
           const btnRight = document.getElementById('scrollRight');
 
-          // marcas persistentes: guardamos índices de muestra (enteros) para evitar desalineos
+          // marcas persistentes: guardamos objetos { idx:number, type:'P'|'Q'|'R'|'S'|'T' }
           const marksAll = [];
           // exponer marksAll para debugging (índices)
           window.marksAll = marksAll;
+          // fiducial selector
+          const fidRadios = () => Array.from(document.querySelectorAll('input[name="fiducial"]'));
+          const getCurrentFid = () => {
+            const r = fidRadios().find(x => x.checked);
+            return r ? r.value : 'R';
+          };
           // tolerancia dinámica para toggle por índice (depende de la decimación actual)
           let currentIndexTol = 1;
 
@@ -247,36 +253,46 @@ input.addEventListener('change', function (ev) {
             };
 
             // inject persistent marks (shapes and annotations) into layout
-            const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !s.id.toString().startsWith('vline-')) : [];
-            const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !a.id.toString().startsWith('ann-')) : [];
+            const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !/^vline-/.test(String(s.id))) : [];
+            const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !/^ann-/.test(String(a.id))) : [];
 
             // only marks visible within [startIndex, endIndex)
-            const visibleMarks = (marksAll || []).filter(idx => idx >= startIndex && idx < endIndex);
-      const markShapes = visibleMarks.map((idx) => {
-              const x = fullX[idx];
+            const visibleMarks = (marksAll || []).filter(m => m && m.idx >= startIndex && m.idx < endIndex);
+            const markShapes = visibleMarks.map((m) => {
+              const x = fullX[m.idx];
               return {
                 type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
                 // línea fina y gris claro
-                line: { color: '#d0d0d0', width: 1 }, id: 'vline-index-' + idx,
+                line: { color: '#d0d0d0', width: 1 }, id: `vline-${m.idx}-${m.type}`,
                 layer: 'below'
               };
             });
 
-            const markAnns = visibleMarks.map((idx) => ({
-              x: fullX[idx], y: 1.01, xref: 'x', yref: 'paper', text: String(fullX[idx]), showarrow: false,
-              align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', font: { color: '#d9534f', size: 12 }, id: 'ann-index-' + idx
-            }));
+            const markAnns = [];
+            visibleMarks.forEach(m => {
+              const x = fullX[m.idx];
+              // time annotation
+              markAnns.push({
+                x, y: 1.01, xref: 'x', yref: 'paper', text: String(x), showarrow: false,
+                align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', font: { color: '#d9534f', size: 12 }, id: `ann-time-${m.idx}-${m.type}`
+              });
+              // letter annotation slightly above
+              markAnns.push({
+                x, y: 1.06, xref: 'x', yref: 'paper', text: String(m.type), showarrow: false,
+                align: 'center', bgcolor: 'rgba(255,255,255,0.9)', bordercolor: '#111827', font: { color: '#111827', size: 13, family: 'monospace' }, id: `ann-type-${m.idx}-${m.type}`
+              });
+            });
 
 
             layout.shapes = existingShapes.concat(markShapes);
             layout.annotations = existingAnns.concat(markAnns);
 
   // Add red points at intersections per subplot per mark
-            visibleMarks.forEach((idx) => {
-              const xval = fullX[idx];
+            visibleMarks.forEach((m) => {
+              const xval = fullX[m.idx];
               sel.forEach((chIdx, i) => {
                 const yaxisName = i === 0 ? 'y' : 'y' + (i+1);
-                const yval = channels[chIdx] && channels[chIdx][idx] !== undefined ? channels[chIdx][idx] : null;
+                const yval = channels[chIdx] && channels[chIdx][m.idx] !== undefined ? channels[chIdx][m.idx] : null;
                 if (yval === null || yval === undefined) return;
                 // crear traza de marcador puntual
                 dataOut.push({
@@ -287,7 +303,7 @@ input.addEventListener('change', function (ev) {
   marker: { color: 'red', size: 8 },
                   showlegend: false,
       hoverinfo: 'skip',
-      customdata: [idx],
+      customdata: [m.idx],
                   yaxis: yaxisName
                 });
               });
@@ -421,13 +437,9 @@ input.addEventListener('change', function (ev) {
             // If clicked a mark's red point (customdata with index), toggle directly
             if (p0 && p0.customdata != null) {
               const mIdx = Array.isArray(p0.customdata) ? p0.customdata[0] : p0.customdata;
-              const pos = marksAll.indexOf(Number(mIdx));
-              if (pos !== -1) {
-                marksAll.splice(pos, 1);
-              } else {
-                marksAll.push(Number(mIdx));
-                marksAll.sort((a,b) => a - b);
-              }
+              const pos = marksAll.findIndex(m => m.idx === Number(mIdx));
+              if (pos !== -1) marksAll.splice(pos, 1);
+              else marksAll.push({ idx: Number(mIdx), type: getCurrentFid() });
               const start = Number(currentStart || 0);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);
@@ -452,7 +464,7 @@ input.addEventListener('change', function (ev) {
             let nearestPos = -1;
             let nearestDX = Infinity;
             for (let i = 0; i < marksAll.length; i++) {
-              const xm = Number(fullX[marksAll[i]]);
+              const xm = Number(fullX[marksAll[i].idx]);
               if (!isFinite(xm)) continue;
               const d = Math.abs(xm - xNum);
               if (d < nearestDX) {
@@ -466,13 +478,13 @@ input.addEventListener('change', function (ev) {
               marksAll.splice(nearestPos, 1);
             } else {
               // add new mark at nearest index
-              marksAll.push(idx);
+              marksAll.push({ idx, type: getCurrentFid() });
             }
             // dedupe & ordenar
-            const uniq = Array.from(new Set(marksAll));
-            uniq.sort((a,b) => a - b);
-            marksAll.length = 0;
-            uniq.forEach(v => marksAll.push(v));
+            const map = new Map();
+            marksAll.forEach(m => { if (!map.has(m.idx)) map.set(m.idx, m); });
+            const uniq = Array.from(map.values()).sort((a,b) => a.idx - b.idx);
+            marksAll.length = 0; uniq.forEach(v => marksAll.push(v));
 
             // re-render current window so marks render
             const start = Number(currentStart || 0);
@@ -483,15 +495,12 @@ input.addEventListener('change', function (ev) {
           // also allow toggling by clicking the annotation label
           myPlot.on('plotly_clickannotation', function(e){
             if (!e || !e.annotation || !e.annotation.id) return;
-            const m = String(e.annotation.id).match(/ann-index-(\d+)/);
+            const m = String(e.annotation.id).match(/ann-(?:time|type)-(\d+)-([PQRST])/);
             if (!m) return;
             const idx = Number(m[1]);
-            const pos = marksAll.indexOf(idx);
+            const pos = marksAll.findIndex(mm => mm.idx === idx);
             if (pos !== -1) marksAll.splice(pos, 1);
-            else {
-              marksAll.push(idx);
-              marksAll.sort((a,b) => a - b);
-            }
+            else marksAll.push({ idx, type: getCurrentFid() });
             const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
@@ -517,7 +526,8 @@ input.addEventListener('change', function (ev) {
                 return;
               }
               // convertir índices a tiempo (string) y unir por saltos de línea
-              const lines = marksAll.map(idx => String(Number(fullX[idx]) || 0.0));
+              // export time and type (time\ttype)
+              const lines = marksAll.map(m => `${String(Number(fullX[m.idx]) || 0.0)}\t${m.type}`);
               const text = lines.join('\n') + '\n';
               const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
               const url = URL.createObjectURL(blob);
@@ -558,31 +568,32 @@ input.addEventListener('change', function (ev) {
             if (updated.length === 0) return;
 
             // para cada shape actual con id 'vline-index-<oldIdx>' obtener su x y mapear a nuevo índice
-            const curShapes = Array.isArray(myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => s.id && s.id.toString().startsWith('vline-index-')) : [];
+            const curShapes = Array.isArray(myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => s.id && /^vline-/.test(String(s.id))) : [];
             // crear mapa oldIdx -> newIdx
             const updates = {};
             curShapes.forEach(s => {
-              const m = String(s.id).match(/vline-index-(\d+)/);
+              const m = String(s.id).match(/vline-(\d+)-([PQRST])/);
               if (!m) return;
               const oldIdx = Number(m[1]);
+              const typ = String(m[2]);
               const x = s.x0 !== undefined ? Number(s.x0) : (s.x1 !== undefined ? Number(s.x1) : null);
               if (x === null) return;
               const newIdx = findIndex(fullX, x);
-              updates[oldIdx] = newIdx;
+              updates[`${oldIdx}|${typ}`] = newIdx;
             });
 
-            // aplicar updates en marksAll: reemplazar cada oldIdx por newIdx si existe
+            // aplicar updates en marksAll: reemplazar con misma type
             Object.keys(updates).forEach(k => {
-              const oldI = Number(k);
+              const [oldI, typ] = k.split('|');
               const newI = updates[k];
-              const pos = marksAll.indexOf(oldI);
-              if (pos !== -1) marksAll[pos] = newI;
+              const pos = marksAll.findIndex(m => m.idx === Number(oldI) && m.type === typ);
+              if (pos !== -1) marksAll[pos] = { idx: newI, type: typ };
             });
             // dedupe y ordenar
-            const unique = Array.from(new Set(marksAll));
-            unique.sort((a,b) => a - b);
-            marksAll.length = 0;
-            unique.forEach(v => marksAll.push(v));
+            const map2 = new Map();
+            marksAll.forEach(m => { if (!map2.has(m.idx)) map2.set(m.idx, m); });
+            const unique = Array.from(map2.values()).sort((a,b) => a.idx - b.idx);
+            marksAll.length = 0; unique.forEach(v => marksAll.push(v));
 
             const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
