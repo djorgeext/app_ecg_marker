@@ -60,6 +60,26 @@
         <label><input type="radio" name="fiducial" value="S"> S</label>
         <label><input type="radio" name="fiducial" value="T"> T</label>
       </div>
+      <strong>Events</strong>
+      <div class="block" id="eventsGroup">
+        <label style="display:block; margin-bottom: 0.35rem;">Type
+          <select id="eventType" style="width:100%; margin-top: 0.25rem;">
+            <option value="Arrhythmia" selected>Arrhythmia</option>
+            <option value="Artifact">Artifact</option>
+            <option value="Noise">Noise</option>
+            <option value="ST change">ST change</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="eventMode"> Mark segments (click start and end)</label>
+        <div class="event-legend">
+          <div class="item"><span class="swatch" style="background:#10b981;border-color:#0e9f6e;"></span> Arrhythmia</div>
+          <div class="item"><span class="swatch" style="background:#f59e0b;border-color:#b45309;"></span> Artifact</div>
+          <div class="item"><span class="swatch" style="background:#6b7280;border-color:#374151;"></span> Noise</div>
+          <div class="item"><span class="swatch" style="background:#ef4444;border-color:#991b1b;"></span> ST change</div>
+          <div class="item"><span class="swatch" style="background:#8b5cf6;border-color:#6d28d9;"></span> Other</div>
+        </div>
+      </div>
       <strong>Channels</strong>
       <div class="block">
         <label><input type="checkbox" id="ch_all" /> All</label>

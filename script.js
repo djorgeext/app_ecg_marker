@@ -102,6 +102,18 @@ input.addEventListener('change', function (ev) {
             const r = fidRadios().find(x => x.checked);
             return r ? r.value : 'R';
           };
+          // events (segment) marking
+          const eventModeCb = document.getElementById('eventMode');
+          const eventTypeSel = document.getElementById('eventType');
+          const segmentsAll = []; // { startIdx:number, endIdx:number, type:string }
+          let pendingSegStartIdx = null; // null or index waiting for end
+          window.segmentsAll = segmentsAll;
+          if (eventModeCb) {
+            eventModeCb.addEventListener('change', () => {
+              pendingSegStartIdx = null;
+              if (statusOutput) statusOutput.innerText = eventModeCb.checked ? 'Event mode: click start and end' : '';
+            });
+          }
           // tolerancia dinámica para toggle por índice (depende de la decimación actual)
           let currentIndexTol = 1;
 
@@ -254,11 +266,37 @@ input.addEventListener('change', function (ev) {
             };
 
             // inject persistent marks (shapes and annotations) into layout
-            const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !/^vline-/.test(String(s.id))) : [];
-            const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations) ? myPlot.layout.annotations.filter(a => !a.id || !/^ann-/.test(String(a.id))) : [];
+            const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes)
+              ? myPlot.layout.shapes.filter(s => !s.id || !/^(vline-|seg-)/.test(String(s.id)))
+              : [];
+            const existingAnns = Array.isArray(myPlot.layout && myPlot.layout.annotations)
+              ? myPlot.layout.annotations.filter(a => !a.id || !/^(ann-|seg-ann-)/.test(String(a.id)))
+              : [];
 
             // only marks visible within [startIndex, endIndex)
             const visibleMarks = (marksAll || []).filter(m => m && m.idx >= startIndex && m.idx < endIndex);
+            // visible segments intersecting view
+            const visibleSegs = (segmentsAll || []).filter(s => !(s.endIdx < startIndex || s.startIdx > endIndex));
+            const colorForType = (t) => {
+              switch (String(t)) {
+                case 'Arrhythmia': return { fill: 'rgba(16,185,129,0.10)', line: 'rgba(16,185,129,0.7)' }; // green
+                case 'Artifact':   return { fill: 'rgba(245,158,11,0.10)', line: 'rgba(180,83,9,0.7)' };  // amber
+                case 'Noise':      return { fill: 'rgba(107,114,128,0.12)', line: 'rgba(55,65,81,0.7)' }; // gray
+                case 'ST change':  return { fill: 'rgba(239,68,68,0.08)', line: 'rgba(153,27,27,0.7)' };  // red
+                default:           return { fill: 'rgba(139,92,246,0.10)', line: 'rgba(109,40,217,0.7)' }; // violet
+              }
+            };
+            const segShapes = visibleSegs.map(s => {
+              const x0 = fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))];
+              const x1 = fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))];
+              const c = colorForType(s.type);
+              return {
+                type: 'rect', xref: 'x', yref: 'paper', x0: x0, x1: x1, y0: 0, y1: 1,
+                fillcolor: c.fill, line: { color: c.line, width: 1, dash: 'dot' },
+                id: `seg-${s.startIdx}-${s.endIdx}-${s.type}`,
+                layer: 'below'
+              };
+            });
             const markShapes = visibleMarks.map((m) => {
               const x = fullX[m.idx];
               return {
@@ -291,7 +329,9 @@ input.addEventListener('change', function (ev) {
             });
 
 
-            layout.shapes = existingShapes.concat(markShapes);
+            // remove segment top labels (as requested)
+
+            layout.shapes = existingShapes.concat(segShapes, markShapes);
             layout.annotations = existingAnns.concat(markAnns);
 
   // Add red points at intersections per subplot per mark
@@ -438,6 +478,29 @@ input.addEventListener('change', function (ev) {
           myPlot.on('plotly_click', function(evt){
             const pts = evt.points && evt.points.length ? evt.points : null;
             if (!pts) return;
+            // Segment event mode: first click sets start, second sets end
+            if (eventModeCb && eventModeCb.checked) {
+              const p0 = pts[0];
+              const xNum = Number(p0.x);
+              const idx = findIndex(fullX, xNum);
+              if (pendingSegStartIdx == null) {
+                pendingSegStartIdx = idx;
+                if (statusOutput) statusOutput.innerText = `Start set @ ${fullX[idx]}`;
+              } else {
+                const startI = Math.min(pendingSegStartIdx, idx);
+                const endI = Math.max(pendingSegStartIdx, idx);
+                const typ = eventTypeSel ? String(eventTypeSel.value || 'Event') : 'Event';
+                segmentsAll.push({ startIdx: startI, endIdx: endI, type: typ });
+                // sort and compact (optional merge of identical)
+                segmentsAll.sort((a,b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx);
+                pendingSegStartIdx = null;
+                if (statusOutput) statusOutput.innerText = `${typ}: ${fullX[startI]} - ${fullX[endI]}`;
+                const start = Number(currentStart || 0);
+                const end = Math.min(fullX.length, start + windowSize);
+                renderWindow(start, end);
+              }
+              return;
+            }
             // prefer any point with customdata (mark) among clicked points
             const markPt = pts.find(p => p && p.customdata != null);
             const p0 = markPt || pts[0];
@@ -503,14 +566,17 @@ input.addEventListener('change', function (ev) {
           myPlot.on('plotly_clickannotation', function(e){
             if (!e || !e.annotation || !e.annotation.id) return;
             const m = String(e.annotation.id).match(/ann-(?:time|type)-(\d+)-([PQRST])/);
-            if (!m) return;
-            const idx = Number(m[1]);
-            const pos = marksAll.findIndex(mm => mm.idx === idx);
-            if (pos !== -1) marksAll.splice(pos, 1);
-            else marksAll.push({ idx, type: getCurrentFid() });
-            const start = Number(currentStart || 0);
-            const end = Math.min(fullX.length, start + windowSize);
-            renderWindow(start, end);
+            if (m) {
+              const idx = Number(m[1]);
+              const pos = marksAll.findIndex(mm => mm.idx === idx);
+              if (pos !== -1) marksAll.splice(pos, 1);
+              else marksAll.push({ idx, type: getCurrentFid() });
+              const start = Number(currentStart || 0);
+              const end = Math.min(fullX.length, start + windowSize);
+              renderWindow(start, end);
+              return;
+            }
+            // no segment annotation click behavior since we removed them
           });
 
           // button: clear marks (empties master marksAll)
@@ -518,6 +584,8 @@ input.addEventListener('change', function (ev) {
           if (clearBtn) {
             clearBtn.addEventListener('click', () => {
               marksAll.length = 0;
+              segmentsAll.length = 0;
+              pendingSegStartIdx = null;
               const start = Number(currentStart || 0);
               const end = Math.min(fullX.length, start + windowSize);
               renderWindow(start, end);

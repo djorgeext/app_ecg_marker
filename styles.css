@@ -103,6 +103,11 @@ input[type="file"] {
 #channelList label { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px; }
 #channelList label:hover { background: #f6f7fb; }
 
+/* Event legend */
+.event-legend { margin-top: 0.5rem; display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 0.9rem; color: var(--muted); }
+.event-legend .item { display: flex; align-items: center; gap: 8px; }
+.event-legend .swatch { width: 14px; height: 14px; border-radius: 3px; border: 2px solid currentColor; display: inline-block; }
+
 /* ========== Navigator ========== */
 .navigator-container { width: 100%; margin-top: 0.75rem; display: inline-block; }
 
