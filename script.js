@@ -195,7 +195,8 @@ input.addEventListener('change', function (ev) {
 
             const layout = {
               showlegend: false,
-              margin: { t: 40, r: 20, l: 50, b: 40 },
+              // extra top margin to comfortably display time and letter annotations
+              margin: { t: 70, r: 20, l: 50, b: 40 },
               height: Math.max(containerHeight, 120 * m),
               title: { text: '' }
             };
@@ -271,15 +272,21 @@ input.addEventListener('change', function (ev) {
             const markAnns = [];
             visibleMarks.forEach(m => {
               const x = fullX[m.idx];
-              // time annotation
+              // Use pixel-based offsets to avoid overlap regardless of scale
+              const baseY = 1.0; // top of plot area
+              // time annotation (closer to axis)
               markAnns.push({
-                x, y: 1.01, xref: 'x', yref: 'paper', text: String(x), showarrow: false,
-                align: 'center', bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', font: { color: '#d9534f', size: 12 }, id: `ann-time-${m.idx}-${m.type}`
+                x, y: baseY, xref: 'x', yref: 'paper', text: String(x), showarrow: false,
+                align: 'center', yanchor: 'bottom', yshift: 2,
+                bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d9534f', borderwidth: 1,
+                font: { color: '#d9534f', size: 10 }, id: `ann-time-${m.idx}-${m.type}`
               });
-              // letter annotation slightly above
+              // letter annotation stacked above time label
               markAnns.push({
-                x, y: 1.06, xref: 'x', yref: 'paper', text: String(m.type), showarrow: false,
-                align: 'center', bgcolor: 'rgba(255,255,255,0.9)', bordercolor: '#111827', font: { color: '#111827', size: 13, family: 'monospace' }, id: `ann-type-${m.idx}-${m.type}`
+                x, y: baseY, xref: 'x', yref: 'paper', text: String(m.type), showarrow: false,
+                align: 'center', yanchor: 'bottom', yshift: 22,
+                bgcolor: 'rgba(255,255,255,0.9)', bordercolor: '#111827', borderwidth: 1,
+                font: { color: '#111827', size: 11, family: 'monospace' }, id: `ann-type-${m.idx}-${m.type}`
               });
             });
 
