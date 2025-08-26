@@ -105,13 +105,32 @@ input.addEventListener('change', function (ev) {
           // events (segment) marking
           const eventModeCb = document.getElementById('eventMode');
           const eventTypeSel = document.getElementById('eventType');
+          const deleteSegBtn = document.getElementById('deleteSegBtn');
+          let deleteSegMode = false; // when true, clicking removes the segment under the cursor
           const segmentsAll = []; // { startIdx:number, endIdx:number, type:string }
           let pendingSegStartIdx = null; // null or index waiting for end
           window.segmentsAll = segmentsAll;
           if (eventModeCb) {
             eventModeCb.addEventListener('change', () => {
               pendingSegStartIdx = null;
+              if (eventModeCb.checked && deleteSegMode) {
+                // turn off delete mode if enabling event mode
+                deleteSegMode = false;
+                if (deleteSegBtn) deleteSegBtn.classList.remove('active');
+              }
               if (statusOutput) statusOutput.innerText = eventModeCb.checked ? 'Event mode: click start and end' : '';
+            });
+          }
+          if (deleteSegBtn) {
+            deleteSegBtn.addEventListener('click', () => {
+              deleteSegMode = !deleteSegMode;
+              // mutually exclusive with event marking mode
+              if (deleteSegMode && eventModeCb && eventModeCb.checked) {
+                eventModeCb.checked = false;
+                pendingSegStartIdx = null;
+              }
+              if (deleteSegBtn) deleteSegBtn.classList.toggle('active', deleteSegMode);
+              if (statusOutput) statusOutput.innerText = deleteSegMode ? 'Delete mode: click shaded segment to remove' : '';
             });
           }
           // tolerancia dinámica para toggle por índice (depende de la decimación actual)
@@ -479,7 +498,7 @@ input.addEventListener('change', function (ev) {
             const pts = evt.points && evt.points.length ? evt.points : null;
             if (!pts) return;
             // Segment event mode: first click sets start, second sets end
-            if (eventModeCb && eventModeCb.checked) {
+            if (!deleteSegMode && eventModeCb && eventModeCb.checked) {
               const p0 = pts[0];
               const xNum = Number(p0.x);
               const idx = findIndex(fullX, xNum);
@@ -495,6 +514,24 @@ input.addEventListener('change', function (ev) {
                 segmentsAll.sort((a,b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx);
                 pendingSegStartIdx = null;
                 if (statusOutput) statusOutput.innerText = `${typ}: ${fullX[startI]} - ${fullX[endI]}`;
+                const start = Number(currentStart || 0);
+                const end = Math.min(fullX.length, start + windowSize);
+                renderWindow(start, end);
+              }
+              return;
+            }
+            // Delete mode: remove the first segment that contains clicked x
+            if (deleteSegMode) {
+              const p0 = pts[0];
+              const xNum = Number(p0.x);
+              const i = segmentsAll.findIndex(s => {
+                const x0 = fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))];
+                const x1 = fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))];
+                return xNum >= Math.min(x0, x1) && xNum <= Math.max(x0, x1);
+              });
+              if (i !== -1) {
+                const removed = segmentsAll.splice(i, 1)[0];
+                if (statusOutput) statusOutput.innerText = `Removed segment: ${removed.type}`;
                 const start = Number(currentStart || 0);
                 const end = Math.min(fullX.length, start + windowSize);
                 renderWindow(start, end);
@@ -674,6 +711,8 @@ input.addEventListener('change', function (ev) {
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
           });
+
+          // end of onload
         } catch (err) {
           console.error('Error processing file:', err);
           statusOutput.innerText = 'Error processing file (see console)';
