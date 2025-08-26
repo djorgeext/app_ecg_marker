@@ -86,6 +86,7 @@ input.addEventListener('change', function (ev) {
           const maxRender = 5000;  // máximo de puntos sin decimar
           const myPlot = document.getElementById('myDiv');
           const navInfo = document.getElementById('navigatorInfo');
+          const countsLine = document.getElementById('countsLine');
           // custom scrollbar elements
           const sb = document.getElementById('scrollbar');
           const sbContent = document.getElementById('scrollbarContent');
@@ -106,6 +107,9 @@ input.addEventListener('change', function (ev) {
           const eventModeCb = document.getElementById('eventMode');
           const eventTypeSel = document.getElementById('eventType');
           const deleteSegBtn = document.getElementById('deleteSegBtn');
+          const segFilterCbs = Array.from(document.querySelectorAll('.seg-filter'));
+          const segFilterAllBtn = document.getElementById('segFilterAll');
+          const segFilterNoneBtn = document.getElementById('segFilterNone');
           let deleteSegMode = false; // when true, clicking removes the segment under the cursor
           const segmentsAll = []; // { startIdx:number, endIdx:number, type:string }
           let pendingSegStartIdx = null; // null or index waiting for end
@@ -133,6 +137,14 @@ input.addEventListener('change', function (ev) {
               if (statusOutput) statusOutput.innerText = deleteSegMode ? 'Delete mode: click shaded segment to remove' : '';
             });
           }
+          const getEnabledTypes = () => new Set(segFilterCbs.filter(el => el.checked).map(el => String(el.dataset.type)));
+          const syncCounts = () => {
+            if (!countsLine) return;
+            countsLine.textContent = `${marksAll.length} marks • ${segmentsAll.length} segments`;
+          };
+          segFilterAllBtn && segFilterAllBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = true); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
+          segFilterNoneBtn && segFilterNoneBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = false); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
+          segFilterCbs.forEach(cb => cb.addEventListener('change', () => { const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); }));
           // tolerancia dinámica para toggle por índice (depende de la decimación actual)
           let currentIndexTol = 1;
 
@@ -295,7 +307,8 @@ input.addEventListener('change', function (ev) {
             // only marks visible within [startIndex, endIndex)
             const visibleMarks = (marksAll || []).filter(m => m && m.idx >= startIndex && m.idx < endIndex);
             // visible segments intersecting view
-            const visibleSegs = (segmentsAll || []).filter(s => !(s.endIdx < startIndex || s.startIdx > endIndex));
+            const enabled = getEnabledTypes();
+            const visibleSegs = (segmentsAll || []).filter(s => enabled.has(String(s.type)) && !(s.endIdx < startIndex || s.startIdx > endIndex));
             const colorForType = (t) => {
               switch (String(t)) {
                 case 'Arrhythmia': return { fill: 'rgba(16,185,129,0.10)', line: 'rgba(16,185,129,0.7)' }; // green
@@ -388,6 +401,7 @@ input.addEventListener('change', function (ev) {
                 shapePosition: false
               }
             });
+            syncCounts();
           };
 
           // initial state: show first 3 channels
@@ -433,6 +447,15 @@ input.addEventListener('change', function (ev) {
               updateInfo(currentStart);
             });
           }
+          // keyboard navigation: arrows and shift for big steps
+          window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              const step = e.shiftKey ? Math.max(1, Math.floor(windowSize * 0.5)) : Math.max(1, Math.floor(windowSize * 0.1));
+              currentStart = Math.min(maxStart, Math.max(0, currentStart + (e.key === 'ArrowLeft' ? -step : step)));
+              syncScrollToCurrent();
+              e.preventDefault();
+            }
+          });
           // arrow buttons
           const stepSmall = () => Math.max(1, Math.floor(windowSize * 0.1));
           const stepLarge = () => Math.max(1, Math.floor(windowSize * 0.5));
@@ -649,6 +672,28 @@ input.addEventListener('change', function (ev) {
               document.body.appendChild(a);
               a.click();
               a.remove();
+              URL.revokeObjectURL(url);
+            });
+          }
+          // button: download segments as TSV start_time end_time type
+          const downloadSegBtn = document.getElementById('downloadSegments');
+          if (downloadSegBtn) {
+            downloadSegBtn.addEventListener('click', () => {
+              if (!Array.isArray(segmentsAll) || segmentsAll.length === 0) {
+                alert('There are no segments to download');
+                return;
+              }
+              const lines = segmentsAll.map(s => {
+                const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0;
+                const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0;
+                return `${x0}\t${x1}\t${s.type}`;
+              });
+              const text = lines.join('\n') + '\n';
+              const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = 'segments.txt';
+              document.body.appendChild(a); a.click(); a.remove();
               URL.revokeObjectURL(url);
             });
           }
