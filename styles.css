@@ -37,17 +37,20 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - (2 * var(--space))); /* igual altura que el panel derecho */
+  /* Deja que crezca con el plot para que la barra quede debajo del gráfico */
+  height: auto;
+  min-height: calc(100vh - (2 * var(--space)));
 }
 
 #myDiv {
   width: 100%;
-  flex: 1 1 auto; /* el gráfico crece para ocupar la altura disponible */
-  min-height: 0;  /* permite que el hijo flex se ajuste dentro del contenedor */
+  flex: 0 0 auto; /* no forzar a ocupar el espacio de la scrollbar */
+  min-height: 0;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  margin-bottom: 0.75rem; /* separación visual del navegador */
 }
 
 /* ========== Right Panel (Card) ========== */
@@ -115,7 +118,7 @@ input[type="file"] {
 .event-legend .swatch { width: 14px; height: 14px; border-radius: 3px; border: 2px solid currentColor; display: inline-block; }
 
 /* ========== Navigator ========== */
-.navigator-container { width: 100%; margin-top: 0.75rem; display: inline-block; }
+.navigator-container { width: 100%; margin-top: 0; display: block; flex: 0 0 auto; }
 
 /* Horizontal scrollbar with buttons */
 .scrollbar-container { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; }

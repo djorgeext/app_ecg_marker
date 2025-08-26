@@ -85,6 +85,7 @@ input.addEventListener('change', function (ev) {
           let windowSize = 1000; // puntos visibles por defecto (mutable para zoom)
           const maxRender = 5000;  // máximo de puntos sin decimar
           const myPlot = document.getElementById('myDiv');
+          const rightPanel = document.getElementById('channelPanel');
           const navInfo = document.getElementById('navigatorInfo');
           const countsLine = document.getElementById('countsLine');
           const exportBtn = document.getElementById('exportBtn');
@@ -120,6 +121,24 @@ input.addEventListener('change', function (ev) {
           const segmentsAll = []; // { startIdx:number, endIdx:number, type:string }
           let pendingSegStartIdx = null; // null or index waiting for end
           window.segmentsAll = segmentsAll;
+
+          // ---- Layout/height helpers ----
+          // Rule: The plot container should initially match the right panel height,
+          // and grow a bit when many channels are displayed so all subplots remain readable.
+          const getRightPanelHeight = () => {
+            if (!rightPanel) return Math.max(window.innerHeight - 2 * 16, 640);
+            return Math.max(320, rightPanel.clientHeight || 0);
+          };
+          const updatePlotContainerHeight = (visibleChannelsCount) => {
+            const base = getRightPanelHeight();
+            // add extra after 8 channels, up to +600px
+            const extra = Math.max(0, (visibleChannelsCount - 8)) * 60;
+            const maxExtra = 600;
+            const target = base + Math.min(extra, maxExtra);
+            if (myPlot && Math.abs((myPlot.clientHeight || 0) - target) > 4) {
+              myPlot.style.height = `${target}px`;
+            }
+          };
           if (eventModeCb) {
             eventModeCb.addEventListener('change', () => {
               pendingSegStartIdx = null;
@@ -207,15 +226,39 @@ input.addEventListener('change', function (ev) {
             const allChecked = cbs.length > 0 && cbs.every(cb => cb.checked);
             if (allCheckbox) allCheckbox.checked = allChecked;
           };
-          channelListDiv.addEventListener('change', syncAllCheckbox);
+          channelListDiv.addEventListener('change', () => {
+            syncAllCheckbox();
+            // Update height preview immediately as selection changes
+            const selCount = getSelectedIndices().length || 0;
+            updatePlotContainerHeight(selCount);
+          });
           if (allCheckbox) {
             allCheckbox.addEventListener('change', () => {
               const cbs = Array.from(document.querySelectorAll('.ch_cb'));
               cbs.forEach(cb => cb.checked = allCheckbox.checked);
+              // After toggling all, resize and re-render to fit new channel count
+              const selCount = getSelectedIndices().length || 0;
+              updatePlotContainerHeight(selCount);
+              const start = Number(currentStart || 0);
+              const end = Math.min(fullX.length, start + windowSize);
+              renderWindow(start, end);
             });
           }
           // initialize "All" checkbox state (first 3 checked by default)
           syncAllCheckbox();
+
+          // Keep plot height in sync with panel on resize
+          let resizeTimer = null;
+          window.addEventListener('resize', () => {
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+              const selCount = getSelectedIndices().length || 0;
+              updatePlotContainerHeight(selCount);
+              const start = Number(currentStart || 0);
+              const end = Math.min(fullX.length, start + windowSize);
+              renderWindow(start, end);
+            }, 120);
+          });
 
           // --- render dinámico: dibuja las derivaciones apiladas ---
           const renderWindow = (startIndex, endIndex) => {
@@ -227,6 +270,8 @@ input.addEventListener('change', function (ev) {
              }
 
             const m = sel.length;
+            // ensure container follows the rule before measuring
+            updatePlotContainerHeight(m);
             const gap = 0.02;
             const totalGap = gap * (m - 1);
             const h = (1 - totalGap) / m;
@@ -246,7 +291,8 @@ input.addEventListener('change', function (ev) {
               showlegend: false,
               // extra top margin to comfortably display time and letter annotations
               margin: { t: 70, r: 20, l: 50, b: 40 },
-              height: Math.max(containerHeight, 120 * m),
+              // Match container height (which already accounts for panel height and channel count)
+              height: containerHeight,
               title: { text: '' }
             };
 
