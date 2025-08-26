@@ -98,14 +98,50 @@
       <div class="block">
         <button id="clearMarks">Clear Marks</button>
       </div>
-      <div class="block">
-        <button id="downloadMarks">Download Marks</button>
-      </div>
-      <div class="block">
-        <button id="downloadSegments">Download Segments</button>
+      <div class="block export-wrap">
+        <button id="exportBtn">Export ▾</button>
+        <ul id="exportMenu" class="export-menu hidden">
+          <li class="hdr">Marks</li>
+          <li><button type="button" data-exp="marks" data-type="R">R peaks (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="P">P (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="Q">Q (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="S">S (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="T">T (txt)</button></li>
+          <li class="sep"></li>
+          <li class="hdr">Segments (start - end)</li>
+          <li><button type="button" data-exp="segs" data-type="Arrhythmia">Arrhythmia</button></li>
+          <li><button type="button" data-exp="segs" data-type="Artifact">Artifact</button></li>
+          <li><button type="button" data-exp="segs" data-type="Noise">Noise</button></li>
+          <li><button type="button" data-exp="segs" data-type="ST change">ST change</button></li>
+          <li><button type="button" data-exp="segs" data-type="Other">Other</button></li>
+          <li class="sep"></li>
+          <li><button type="button" data-exp="aecg" id="exportAecgBtn">All as HL7 aECG…</button></li>
+        </ul>
       </div>
       <div class="hint small muted block">Shortcuts: ←/→ scroll • Shift+←/→ big step</div>
     </aside>
+  </div>
+
+  <!-- aECG modal -->
+  <div id="aecgModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <h3>Export HL7 aECG</h3>
+      <form id="aecgForm">
+        <div class="grid2">
+          <label>Patient ID<input id="aecgPid" type="text" placeholder="PID-001"></label>
+          <label>Patient Name<input id="aecgPname" type="text" placeholder="John Doe"></label>
+          <label>Sex<select id="aecgSex"><option value="U">Unknown</option><option value="M">Male</option><option value="F">Female</option></select></label>
+          <label>Date of Birth<input id="aecgDob" type="date"></label>
+          <label>Study ID<input id="aecgStudyId" type="text" placeholder="STUDY-001"></label>
+          <label>Device<input id="aecgDevice" type="text" placeholder="ECG Recorder"></label>
+        </div>
+        <div class="small muted" id="aecgInfo">Sampling rate: — Hz • Leads: 12</div>
+        <div class="actions">
+          <button type="button" id="aecgCancel">Cancel</button>
+          <button type="button" id="aecgDownload" class="primary">Download aECG</button>
+        </div>
+      </form>
+    </div>
   </div>
 </body>
 </html>

@@ -87,6 +87,12 @@ input.addEventListener('change', function (ev) {
           const myPlot = document.getElementById('myDiv');
           const navInfo = document.getElementById('navigatorInfo');
           const countsLine = document.getElementById('countsLine');
+          const exportBtn = document.getElementById('exportBtn');
+          const exportMenu = document.getElementById('exportMenu');
+          const aecgModal = document.getElementById('aecgModal');
+          const aecgCancel = document.getElementById('aecgCancel');
+          const aecgDownload = document.getElementById('aecgDownload');
+          const aecgInfo = document.getElementById('aecgInfo');
           // custom scrollbar elements
           const sb = document.getElementById('scrollbar');
           const sbContent = document.getElementById('scrollbarContent');
@@ -402,7 +408,101 @@ input.addEventListener('change', function (ev) {
               }
             });
             syncCounts();
+            // update aECG info if modal is open
+            if (aecgInfo && !aecgModal.classList.contains('hidden')) {
+              const sr = inferSamplingRate(fullX);
+              aecgInfo.textContent = `Sampling rate: ${sr || '—'} Hz • Leads: ${channels.length}`;
+            }
           };
+
+          // Export menu logic
+          const hideMenu = () => { exportMenu && exportMenu.classList.add('hidden'); };
+          const toggleMenu = () => { exportMenu && exportMenu.classList.toggle('hidden'); };
+          exportBtn && exportBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+          document.addEventListener('click', hideMenu);
+          exportMenu && exportMenu.addEventListener('click', (e) => { e.stopPropagation(); });
+
+          // Helpers
+          const downloadText = (text, filename) => {
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+          };
+          const inferSamplingRate = (xs) => {
+            if (!xs || xs.length < 3) return null;
+            // assume evenly spaced, derive from median dt
+            const dts = [];
+            for (let i = 1; i < Math.min(xs.length, 4096); i++) {
+              const d = Number(xs[i]) - Number(xs[i-1]);
+              if (isFinite(d) && d > 0) dts.push(d);
+            }
+            if (!dts.length) return null;
+            dts.sort((a,b)=>a-b);
+            const med = dts[Math.floor(dts.length/2)];
+            return med > 0 ? Math.round(1/med) : null;
+          };
+
+          // Handle export menu items
+          exportMenu && exportMenu.querySelectorAll('button[data-exp="marks"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const typ = String(btn.dataset.type);
+              const list = marksAll.filter(m => m.type === typ).map(m => String(Number(fullX[m.idx]) || 0.0));
+              if (list.length === 0) { alert(`No ${typ} marks to export`); hideMenu(); return; }
+              downloadText(list.join('\n') + '\n', `${typ}_marks.txt`);
+              hideMenu();
+            });
+          });
+
+          exportMenu && exportMenu.querySelectorAll('button[data-exp="segs"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const typ = String(btn.dataset.type);
+              const rows = segmentsAll.filter(s => String(s.type) === typ).map(s => {
+                const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0;
+                const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0;
+                return `${x0}\t${x1}`;
+              });
+              if (rows.length === 0) { alert(`No ${typ} segments to export`); hideMenu(); return; }
+              downloadText(rows.join('\n') + '\n', `${typ.replace(/\s+/g,'_')}_segments.txt`);
+              hideMenu();
+            });
+          });
+
+          // aECG modal open/close
+          const openAecg = () => {
+            if (!aecgModal) return;
+            const sr = inferSamplingRate(fullX);
+            if (aecgInfo) aecgInfo.textContent = `Sampling rate: ${sr || '—'} Hz • Leads: ${channels.length}`;
+            aecgModal.classList.remove('hidden');
+          };
+          const closeAecg = () => { aecgModal && aecgModal.classList.add('hidden'); };
+          const aecgBtn = document.getElementById('exportAecgBtn');
+          aecgBtn && aecgBtn.addEventListener('click', () => { hideMenu(); openAecg(); });
+          aecgCancel && aecgCancel.addEventListener('click', closeAecg);
+          aecgModal && aecgModal.addEventListener('click', (e) => { if (e.target === aecgModal) closeAecg(); });
+
+          // aECG download (very lightweight placeholder XML; real aECG schema can be added later)
+          aecgDownload && aecgDownload.addEventListener('click', () => {
+            // Collect form fields
+            const pid = (document.getElementById('aecgPid')?.value || '').trim();
+            const pname = (document.getElementById('aecgPname')?.value || '').trim();
+            const sex = (document.getElementById('aecgSex')?.value || 'U').trim();
+            const dob = (document.getElementById('aecgDob')?.value || '').trim();
+            const study = (document.getElementById('aecgStudyId')?.value || '').trim();
+            const device = (document.getElementById('aecgDevice')?.value || '').trim();
+
+            const sr = inferSamplingRate(fullX) || 0;
+            const xmlEscape = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+            const marksXml = marksAll.map(m => `    <mark type="${xmlEscape(m.type)}" time="${xmlEscape(Number(fullX[m.idx])||0)}"/>`).join('\n');
+            const segsXml = segmentsAll.map(s => {
+              const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0;
+              const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0;
+              return `    <segment type="${xmlEscape(s.type)}" start="${xmlEscape(x0)}" end="${xmlEscape(x1)}"/>`;
+            }).join('\n');
+            const body = `<?xml version="1.0" encoding="UTF-8"?>\n<aECG approximate="true">\n  <patient id="${xmlEscape(pid)}" name="${xmlEscape(pname)}" sex="${xmlEscape(sex)}" dob="${xmlEscape(dob)}"/>\n  <study id="${xmlEscape(study)}" device="${xmlEscape(device)}" samplingRate="${xmlEscape(sr)}" leads="${channels.length}"/>\n  <marks>\n${marksXml}\n  </marks>\n  <segments>\n${segsXml}\n  </segments>\n</aECG>\n`;
+            downloadText(body, 'export_aecg.xml');
+            closeAecg();
+          });
 
           // initial state: show first 3 channels
           // ensure UI reflects first 3 checked by default

@@ -132,6 +132,25 @@ input[type="file"] {
 /* ========== Misc ========== */
 g.shapelayer path, g.shapelayer line { pointer-events: none; }
 
+/* ========== Export menu & modal ========== */
+.export-wrap { position: relative; }
+.export-menu { position: absolute; inset-inline-end: 0; top: 100%; margin-top: 6px; list-style: none; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 6px; width: 260px; z-index: 10; }
+.export-menu.hidden { display: none; }
+.export-menu li { margin: 2px 0; }
+.export-menu li.hdr { padding: 6px 8px; font-weight: 600; color: var(--muted); }
+.export-menu li.sep { height: 1px; background: var(--border); margin: 6px 4px; }
+.export-menu button { width: 100%; text-align: left; padding: 6px 8px; border-radius: 6px; background: transparent; border: 1px solid transparent; }
+.export-menu button:hover { background: #f6f7fb; border-color: #e5e7eb; }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; padding: 1rem; z-index: 50; }
+.modal.hidden { display: none; }
+.modal .dialog { width: min(720px, 92vw); background: #fff; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); padding: 1rem; }
+.modal .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 8px; }
+.modal label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.modal input, .modal select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.modal .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 /* ========== Responsive ========== */
 @media (max-width: 1200px) {
   body { display: block; padding: var(--space); min-height: 100vh; }
