@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG-Marker</title>
+    <link rel="stylesheet" href="styles.css">
+  <!-- Plotly.js served from ./vendor to avoid exposing node_modules -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>
+  <script>
+    require.config({
+      paths: {
+  'plotly': 'https://cdn.plot.ly/plotly-2.35.2.min',
+        'plotlyjs-finance': 'https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance',
+        // añadir papaparse como módulo para que RequireJS lo cargue correctamente
+        'papaparse': 'https://unpkg.com/papaparse@5.4.1/papaparse.min'
+      },
+      shim: {
+        'plotlyjs-finance': {
+          deps: ['plotly']
+        }
+      }
+    });
+    // cargar papaparse y luego tu script (o pásalo como dependencia en script.js si lo necesita)
+    require(['plotly','plotlyjs-finance','papaparse'], function(Plotly, finance, Papa){
+      // Plotly, el plugin y PapaParse ya cargaron; script.js también se ejecuta.
+    });
+  </script>
+  <!-- <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script> -->
+</head>
+<body>
+  <div class="left-panel">
+    <div id="myDiv"><!-- Plotly chart --></div>
+
+  <!-- Secondary result chart for RR FFT -->
+  <div id="fftDiv" class="secondary-chart" aria-label="RR FFT chart"></div>
+
+    <!-- Navigator: horizontal scrollbar with arrow buttons -->
+    <div class="navigator-container">
+      <div class="scrollbar-container">
+        <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">◀</button>
+        <div id="scrollbar" class="scrollbar"><div id="scrollbarContent"></div></div>
+        <button id="scrollRight" class="scroll-btn" aria-label="Scroll right" title="Right">▶</button>
+      </div>
+      <div id="navigatorInfo"></div>
+    </div>
+  </div>
+
+  <!-- Right panel: channel selector -->
+  <div class="right-panel">
+    <aside id="channelPanel">
+      <input id="fileInput" type="file" accept=".vak,.txt,.csv" />
+      <div class="block">
+        <button id="loadFileBtn">Load File</button>
+      </div>
+      <div id="statusOutput"></div>
+      <script src="script.js"></script>
+      <strong>Fiducial</strong>
+      <div class="block" id="fiducialGroup">
+        <label><input type="radio" name="fiducial" value="P"> P</label>
+        <label><input type="radio" name="fiducial" value="Q"> Q</label>
+        <label><input type="radio" name="fiducial" value="R" checked> R</label>
+        <label><input type="radio" name="fiducial" value="S"> S</label>
+        <label><input type="radio" name="fiducial" value="T"> T</label>
+      </div>
+      <strong>Events</strong>
+      <div class="block" id="eventsGroup">
+        <label style="display:block; margin-bottom: 0.35rem;">Type
+          <select id="eventType" style="width:100%; margin-top: 0.25rem;">
+            <option value="Arrhythmia" selected>Arrhythmia</option>
+            <option value="Artifact">Artifact</option>
+            <option value="Noise">Noise</option>
+            <option value="ST change">ST change</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="eventMode"> Mark segments (click start and end)</label>
+        <div class="block">
+          <button id="deleteSegBtn" title="Toggle delete mode to remove a segment by clicking its shading">Delete segments (click shaded)</button>
+        </div>
+        <div class="event-legend">
+          <label class="item"><input type="checkbox" class="seg-filter" data-type="Arrhythmia" checked> <span class="swatch" style="background:#10b981;border-color:#0e9f6e;"></span> Arrhythmia</label>
+          <label class="item"><input type="checkbox" class="seg-filter" data-type="Artifact" checked> <span class="swatch" style="background:#f59e0b;border-color:#b45309;"></span> Artifact</label>
+          <label class="item"><input type="checkbox" class="seg-filter" data-type="Noise" checked> <span class="swatch" style="background:#6b7280;border-color:#374151;"></span> Noise</label>
+          <label class="item"><input type="checkbox" class="seg-filter" data-type="ST change" checked> <span class="swatch" style="background:#ef4444;border-color:#991b1b;"></span> ST change</label>
+          <label class="item"><input type="checkbox" class="seg-filter" data-type="Other" checked> <span class="swatch" style="background:#8b5cf6;border-color:#6d28d9;"></span> Other</label>
+          <div class="legend-actions"><button id="segFilterAll" type="button" class="link-btn">All</button> · <button id="segFilterNone" type="button" class="link-btn">None</button></div>
+        </div>
+      </div>
+      <strong>Channels</strong>
+      <div class="block">
+        <label><input type="checkbox" id="ch_all" /> All</label>
+      </div>
+      <div id="channelList" class="block">
+        <!-- checkboxes generados dinámicamente por script.js -->
+      </div>
+      <div id="countsLine" class="muted small block">0 marks • 0 segments</div>
+      <div class="block">
+        <button id="showSelected">Show</button>
+      </div>
+      <div class="block">
+        <button id="clearMarks">Clear Marks</button>
+      </div>
+      <div class="block">
+        <button id="computeRrFft">Compute RR FFT (Python)</button>
+      </div>
+      <div class="block export-wrap">
+        <button id="exportBtn">Export ▾</button>
+        <ul id="exportMenu" class="export-menu hidden">
+          <li class="hdr">Marks</li>
+          <li><button type="button" data-exp="marks" data-type="R">R peaks (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="P">P (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="Q">Q (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="S">S (txt)</button></li>
+          <li><button type="button" data-exp="marks" data-type="T">T (txt)</button></li>
+          <li class="sep"></li>
+          <li class="hdr">Segments (start - end)</li>
+          <li><button type="button" data-exp="segs" data-type="Arrhythmia">Arrhythmia</button></li>
+          <li><button type="button" data-exp="segs" data-type="Artifact">Artifact</button></li>
+          <li><button type="button" data-exp="segs" data-type="Noise">Noise</button></li>
+          <li><button type="button" data-exp="segs" data-type="ST change">ST change</button></li>
+          <li><button type="button" data-exp="segs" data-type="Other">Other</button></li>
+          <li class="sep"></li>
+          <li><button type="button" data-exp="aecg" id="exportAecgBtn">All as HL7 aECG…</button></li>
+        </ul>
+      </div>
+      <div class="hint small muted block">Shortcuts: ←/→ scroll • Shift+←/→ big step</div>
+    </aside>
+  </div>
+
+  <!-- aECG modal -->
+  <div id="aecgModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <h3>Export HL7 aECG</h3>
+      <form id="aecgForm">
+        <div class="grid2">
+          <label>Patient ID<input id="aecgPid" type="text" placeholder="PID-001"></label>
+          <label>Patient Name<input id="aecgPname" type="text" placeholder="John Doe"></label>
+          <label>Sex<select id="aecgSex"><option value="U">Unknown</option><option value="M">Male</option><option value="F">Female</option></select></label>
+          <label>Date of Birth<input id="aecgDob" type="date"></label>
+          <label>Study ID<input id="aecgStudyId" type="text" placeholder="STUDY-001"></label>
+          <label>Device<input id="aecgDevice" type="text" placeholder="ECG Recorder"></label>
+        </div>
+        <div class="small muted" id="aecgInfo">Sampling rate: — Hz • Leads: 12</div>
+        <div class="actions">
+          <button type="button" id="aecgCancel">Cancel</button>
+          <button type="button" id="aecgDownload" class="primary">Download aECG</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
