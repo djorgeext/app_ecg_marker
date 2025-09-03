@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  backend:
+    container_name: ecg_marker_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    container_name: ecg_marker_frontend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    volumes:
+      - ./src:/var/www/html:ro
+    depends_on:
+      - backend
+    # If you prefer nginx to wait until backend is ready, you could add a simple healthcheck on backend and condition here
+    # condition: service_healthy
+
+networks:
+  default:
+    name: ecg_marker_net

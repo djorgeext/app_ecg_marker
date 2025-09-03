@@ -39,12 +39,13 @@ def rr_fft(req: RRFFTRequest):
         raise HTTPException(status_code=400, detail="RR series too short")
 
     # Detrend by removing mean to emphasize variability
-    x = rr - rr.mean()
+    std = rr.std()
+    x = (rr - rr.mean()) / std if std else rr - rr.mean()
     n = x.size
     # Real FFT and corresponding frequency bins (cycles per beat)
     X = np.fft.rfft(x)
-    freq = np.fft.rfftfreq(n, d=1.0)  # sample spacing = 1 beat
-    power = (np.abs(X) ** 2) / max(n, 1)
+    freq = np.linspace(0, 0.5, num=X.size//2 + 1)
+    power = np.log10(np.abs(X[:freq.size]) ** 2)
 
     return RRFFTResponse(
         rr=rr.tolist(),

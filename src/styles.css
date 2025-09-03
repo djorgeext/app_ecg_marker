@@ -53,11 +53,11 @@ body {
   margin-bottom: 0.75rem; /* separación visual del navegador */
 }
 
-/* Secondary chart (RR FFT) */
+/* Secondary charts (RR and RR FFT) */
 .secondary-chart {
   width: 100%;
   flex: 0 0 auto;
-  min-height: 180px;
+  min-height: 200px;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
