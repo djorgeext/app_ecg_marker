@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ECG-Marker</title>
     <link rel="stylesheet" href="styles.css">
@@ -38,9 +39,9 @@
     <!-- Navigator: horizontal scrollbar with arrow buttons -->
     <div class="navigator-container">
       <div class="scrollbar-container">
-        <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">◀</button>
+  <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">&lt;</button>
         <div id="scrollbar" class="scrollbar"><div id="scrollbarContent"></div></div>
-        <button id="scrollRight" class="scroll-btn" aria-label="Scroll right" title="Right">▶</button>
+  <button id="scrollRight" class="scroll-btn" aria-label="Scroll right" title="Right">&gt;</button>
       </div>
       <div id="navigatorInfo"></div>
     </div>
@@ -84,7 +85,7 @@
           <label class="item"><input type="checkbox" class="seg-filter" data-type="Noise" checked> <span class="swatch" style="background:#6b7280;border-color:#374151;"></span> Noise</label>
           <label class="item"><input type="checkbox" class="seg-filter" data-type="ST change" checked> <span class="swatch" style="background:#ef4444;border-color:#991b1b;"></span> ST change</label>
           <label class="item"><input type="checkbox" class="seg-filter" data-type="Other" checked> <span class="swatch" style="background:#8b5cf6;border-color:#6d28d9;"></span> Other</label>
-          <div class="legend-actions"><button id="segFilterAll" type="button" class="link-btn">All</button> · <button id="segFilterNone" type="button" class="link-btn">None</button></div>
+          <div class="legend-actions"><button id="segFilterAll" type="button" class="link-btn">All</button> | <button id="segFilterNone" type="button" class="link-btn">None</button></div>
         </div>
       </div>
       <strong>Channels</strong>
@@ -94,7 +95,7 @@
       <div id="channelList" class="block">
         <!-- checkboxes generados dinámicamente por script.js -->
       </div>
-      <div id="countsLine" class="muted small block">0 marks • 0 segments</div>
+  <div id="countsLine" class="muted small block">0 marks | 0 segments</div>
       <div class="block">
         <button id="showSelected">Show</button>
       </div>
@@ -111,7 +112,7 @@
         <button id="computeRrFft">Compute RR FFT (Python)</button>
       </div>
       <div class="block export-wrap">
-        <button id="exportBtn">Export ▾</button>
+  <button id="exportBtn">Export &#9660;</button>
         <ul id="exportMenu" class="export-menu hidden">
           <li class="hdr">Marks</li>
           <li><button type="button" data-exp="marks" data-type="R">R peaks (txt)</button></li>
@@ -127,10 +128,10 @@
           <li><button type="button" data-exp="segs" data-type="ST change">ST change</button></li>
           <li><button type="button" data-exp="segs" data-type="Other">Other</button></li>
           <li class="sep"></li>
-          <li><button type="button" data-exp="aecg" id="exportAecgBtn">All as HL7 aECG…</button></li>
+          <li><button type="button" data-exp="aecg" id="exportAecgBtn">All as HL7 aECG&hellip;</button></li>
         </ul>
       </div>
-      <div class="hint small muted block">Shortcuts: ←/→ scroll • Shift+←/→ big step</div>
+  <div class="hint small muted block">Shortcuts: &larr;/&rarr; scroll &bull; Shift+&larr;/&rarr; big step</div>
     </aside>
   </div>
 
@@ -147,7 +148,7 @@
           <label>Study ID<input id="aecgStudyId" type="text" placeholder="STUDY-001"></label>
           <label>Device<input id="aecgDevice" type="text" placeholder="ECG Recorder"></label>
         </div>
-        <div class="small muted" id="aecgInfo">Sampling rate: — Hz • Leads: 12</div>
+  <div class="small muted" id="aecgInfo">Sampling rate: - Hz | Leads: 12</div>
         <div class="actions">
           <button type="button" id="aecgCancel">Cancel</button>
           <button type="button" id="aecgDownload" class="primary">Download aECG</button>

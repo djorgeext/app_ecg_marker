@@ -166,7 +166,7 @@ input.addEventListener('change', function (ev) {
           const getEnabledTypes = () => new Set(segFilterCbs.filter(el => el.checked).map(el => String(el.dataset.type)));
           const syncCounts = () => {
             if (!countsLine) return;
-            countsLine.textContent = `${marksAll.length} marks • ${segmentsAll.length} segments`;
+            countsLine.textContent = `${marksAll.length} marks | ${segmentsAll.length} segments`;
           };
           segFilterAllBtn && segFilterAllBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = true); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
           segFilterNoneBtn && segFilterNoneBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = false); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
@@ -458,7 +458,7 @@ input.addEventListener('change', function (ev) {
             // update aECG info if modal is open
             if (aecgInfo && !aecgModal.classList.contains('hidden')) {
               const sr = inferSamplingRate(fullX);
-              aecgInfo.textContent = `Sampling rate: ${sr || '—'} Hz • Leads: ${channels.length}`;
+              aecgInfo.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`;
             }
           };
 
@@ -519,7 +519,7 @@ input.addEventListener('change', function (ev) {
           const openAecg = () => {
             if (!aecgModal) return;
             const sr = inferSamplingRate(fullX);
-            if (aecgInfo) aecgInfo.textContent = `Sampling rate: ${sr || '—'} Hz • Leads: ${channels.length}`;
+            if (aecgInfo) aecgInfo.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`;
             aecgModal.classList.remove('hidden');
           };
           const closeAecg = () => { aecgModal && aecgModal.classList.add('hidden'); };
