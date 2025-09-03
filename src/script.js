@@ -663,6 +663,36 @@ input.addEventListener('change', function (ev) {
             });
           }
 
+          // Compute RR series locally and toggle RR-only view
+          const showRRBtn = document.getElementById('showRR');
+          const backBtn = document.getElementById('backToEcg');
+          const computeRRSeries = () => {
+            const rIdx = marksAll.filter(m => m.type === 'R').map(m => m.idx).sort((a,b)=>a-b);
+            if (rIdx.length < 2) return [];
+            const rr = [];
+            for (let i = 1; i < rIdx.length; i++) rr.push(rIdx[i] - rIdx[i-1]);
+            return rr;
+          };
+          const renderRROnly = () => {
+            const rr = computeRRSeries();
+            if (!rr.length) { alert('Mark at least two R peaks to compute RR.'); return; }
+            // Hide ECG plot and show RR chart in fftDiv as the main area
+            if (myPlot) myPlot.style.display = 'none';
+            if (fftDiv) fftDiv.style.display = 'block';
+            const x = Array.from({length: rr.length}, (_,i)=>i+1);
+            const trace = { x, y: rr, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
+            const layout = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: Math.max(300, rightPanel ? rightPanel.clientHeight : 360) };
+            Plotly.react(fftDiv, [trace], layout, { displayModeBar: true });
+          };
+          showRRBtn && showRRBtn.addEventListener('click', renderRROnly);
+          backBtn && backBtn.addEventListener('click', () => {
+            if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
+            if (myPlot) { myPlot.style.display = 'block'; }
+            const start = Number(currentStart || 0);
+            const end = Math.min(fullX.length, start + windowSize);
+            renderWindow(start, end);
+          });
+
           // Compute RR FFT via FastAPI backend and render in fftDiv
           const computeBtn = document.getElementById('computeRrFft');
           const getRIndices = () => marksAll.filter(m => m.type === 'R').map(m => m.idx).sort((a,b)=>a-b);

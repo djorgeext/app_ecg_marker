@@ -63,6 +63,7 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   margin-bottom: 0.75rem;
+  display: none; /* hidden until RR view is requested */
 }
 
 /* ========== Right Panel (Card) ========== */
