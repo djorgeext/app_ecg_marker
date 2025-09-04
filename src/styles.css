@@ -66,6 +66,18 @@ body {
   display: none; /* hidden until RR view is requested */
 }
 
+/* RR tools banner shown when no marks are present */
+.rr-tools {
+  width: 100%;
+  background: #fff7ed; /* warm light orange */
+  border: 1px dashed #fdba74;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.rr-tools .rr-tools-row { display: flex; align-items: center; gap: 8px; }
+.rr-tools input[type="file"] { display: none; }
+
 /* ========== Right Panel (Card) ========== */
 #channelPanel {
   width: 100%;

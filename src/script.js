@@ -664,8 +664,8 @@ input.addEventListener('change', function (ev) {
             });
           }
 
-          // Compute RR series locally and toggle RR-only view
-          const showRRBtn = document.getElementById('showRR');
+          // Compute RR series locally and show RR analysis (RR + FFT)
+          const rrAnalysisBtn = document.getElementById('rrAnalysis');
           const backBtn = document.getElementById('backToEcg');
           const computeRRSeries = () => {
             const rIdx = marksAll.filter(m => m.type === 'R').map(m => m.idx).sort((a,b)=>a-b);
@@ -677,10 +677,93 @@ input.addEventListener('change', function (ev) {
           const renderRROnly = async () => {
             // Prepare indices and visibility
             const rIdx = marksAll.filter(m => m.type === 'R').map(m => m.idx).sort((a,b)=>a-b);
-            if (rIdx.length < 2) { alert('Mark at least two R peaks to compute RR.'); return; }
             if (myPlot) myPlot.style.display = 'none';
             if (rrDiv) rrDiv.style.display = 'block';
             if (fftDiv) fftDiv.style.display = 'block';
+            const rrTools = document.getElementById('rrTools');
+            // If no marks, show tools banner and empty plots
+            if (!rIdx.length) {
+              if (rrTools) rrTools.style.display = 'block';
+              // empty RR chart
+              const baseH = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
+              const hRR = Math.max(200, Math.round(baseH * 0.45));
+              const hFFT = Math.max(200, Math.round(baseH * 0.45));
+              const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
+              const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
+              if (rrDiv) Plotly.react(rrDiv, [], layoutRR, { displayModeBar: true });
+              if (fftDiv) Plotly.react(fftDiv, [], layoutFFT, { displayModeBar: true });
+
+              // wire RR loader button
+              const loadRRBtn = document.getElementById('loadRRBtn');
+              const rrFileInput = document.getElementById('rrFileInput');
+              if (loadRRBtn && rrFileInput && !loadRRBtn.__wired) {
+                loadRRBtn.__wired = true;
+                loadRRBtn.addEventListener('click', () => rrFileInput.click());
+                rrFileInput.addEventListener('change', async (e) => {
+                  const f = e.target.files && e.target.files[0];
+                  if (!f) return;
+                  try {
+                    const txt = await f.text();
+                    // Parse RR array from txt/csv: accept numbers separated by whitespace, comma, or newline
+                    const nums = txt.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).map(Number).filter(v => Number.isFinite(v));
+                    if (nums.length < 2) { alert('RR file must contain at least two numeric values.'); return; }
+                    // Plot RR
+                    const rrX = Array.from({ length: nums.length }, (_, i) => i + 1);
+                    const trRR = { x: rrX, y: nums, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
+                    const baseH2 = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
+                    const hRR2 = Math.max(200, Math.round(baseH2 * 0.45));
+                    const hFFT2 = Math.max(200, Math.round(baseH2 * 0.45));
+                    const layoutRR2 = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR2 };
+                    const layoutFFT2 = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT2 };
+                    Plotly.react(rrDiv, [trRR], layoutRR2, { displayModeBar: true });
+
+                    // Try server-side FFT from RR array
+                    try {
+                      const resp = await fetch('http://127.0.0.1:8000/api/rr-fft-from-rr', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rr: nums })
+                      });
+                      if (!resp.ok) throw new Error(await resp.text() || ('HTTP '+resp.status));
+                      const data = await resp.json();
+                      const trFFT = { x: data.freq, y: data.power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
+                      Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
+                    } catch (err) {
+                      console.warn('Backend RR FFT from RR unavailable, computing locally.', err);
+                      // Local FFT fallback (cycles/beat)
+                      const n = nums.length;
+                      const mean = nums.reduce((a,b)=>a+b,0)/n;
+                      const x = nums.map(v => v - mean);
+                      // Use real FFT via naive DFT fallback? We don't have FFT lib, so approximate via autocorr periodogram? Instead, simple power at few bins
+                      // Lightweight DFT for first N/2 bins
+                      const N = n;
+                      const half = Math.floor(N/2);
+                      const freq = [];
+                      const power = [];
+                      for (let k = 1; k <= half; k++) {
+                        let re = 0, im = 0;
+                        for (let t = 0; t < N; t++) {
+                          const ang = -2 * Math.PI * k * t / N;
+                          re += x[t] * Math.cos(ang);
+                          im += x[t] * Math.sin(ang);
+                        }
+                        freq.push(k / N);
+                        power.push(re*re + im*im);
+                      }
+                      const trFFT = { x: freq, y: power.map(v => Math.max(v, 1e-12)), type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT (local)' };
+                      Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
+                    }
+                    if (rrTools) rrTools.style.display = 'none';
+                  } catch (err2) {
+                    console.error('Failed to read RR file', err2);
+                    alert('Could not read RR file.');
+                  }
+                });
+              }
+              return; // stop here when no marks; user may load RR file
+            } else {
+              // hide tools when marks exist
+              if (rrTools) rrTools.style.display = 'none';
+            }
 
             // Try server-side FFT first
             try {
@@ -700,7 +783,7 @@ input.addEventListener('change', function (ev) {
               const hRR = Math.max(200, Math.round(baseH * 0.45));
               const hFFT = Math.max(200, Math.round(baseH * 0.45));
               const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
-              const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)' }, yaxis: { title: 'Power (log10)' }, height: hFFT };
+              const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
               if (rrDiv) Plotly.react(rrDiv, [trRR], layoutRR, { displayModeBar: true });
               if (fftDiv) Plotly.react(fftDiv, [trFFT], layoutFFT, { displayModeBar: true });
               return;
@@ -716,55 +799,18 @@ input.addEventListener('change', function (ev) {
             if (rrDiv) Plotly.react(rrDiv, [trace], layout, { displayModeBar: true });
             if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
           };
-          showRRBtn && showRRBtn.addEventListener('click', renderRROnly);
+          rrAnalysisBtn && rrAnalysisBtn.addEventListener('click', renderRROnly);
           backBtn && backBtn.addEventListener('click', () => {
             if (rrDiv) { Plotly.purge(rrDiv); rrDiv.style.display = 'none'; }
             if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
+            const rrTools = document.getElementById('rrTools');
+            if (rrTools) rrTools.style.display = 'none';
             if (myPlot) { myPlot.style.display = 'block'; }
             const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
           });
 
-          // Compute RR FFT via FastAPI backend and render in fftDiv
-          const computeBtn = document.getElementById('computeRrFft');
-          const getRIndices = () => marksAll.filter(m => m.type === 'R').map(m => m.idx).sort((a,b)=>a-b);
-          const plotRRFFT = (freq, power, rr) => {
-            if (!rrDiv || !fftDiv) return;
-            // Ensure RR view containers are visible
-            if (myPlot) myPlot.style.display = 'none';
-            rrDiv.style.display = 'block';
-            fftDiv.style.display = 'block';
-            const rrX = Array.from({length: rr.length}, (_,i)=>i+1);
-            const trRR = { x: rrX, y: rr, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
-            const trFFT = { x: freq, y: power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
-            const baseH = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
-            const hRR = Math.max(200, Math.round(baseH * 0.45));
-            const hFFT = Math.max(200, Math.round(baseH * 0.45));
-            const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
-            const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)' }, yaxis: { title: 'Power (log10)' }, height: hFFT };
-            Plotly.react(rrDiv, [trRR], layoutRR, { displayModeBar: true });
-            Plotly.react(fftDiv, [trFFT], layoutFFT, { displayModeBar: true });
-          };
-          if (computeBtn) {
-            computeBtn.addEventListener('click', async () => {
-              const rIdx = getRIndices();
-              if (rIdx.length < 2) { alert('Mark at least two R peaks first.'); return; }
-              try {
-                const resp = await fetch('http://127.0.0.1:8000/api/rr-fft', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ r_indices: rIdx })
-                });
-                if (!resp.ok) { const t = await resp.text(); throw new Error(t || ('HTTP '+resp.status)); }
-                const data = await resp.json();
-                plotRRFFT(data.freq, data.power, data.rr);
-              } catch (err) {
-                console.error('RR FFT error', err);
-                alert('Could not compute RR FFT. Ensure the backend is running on http://127.0.0.1:8000');
-              }
-            });
-          }
 
           // clicking adds/removes a vertical line mark and persists via indices
           myPlot.on('plotly_click', function(evt){

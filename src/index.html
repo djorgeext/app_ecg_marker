@@ -33,6 +33,15 @@
   <div class="left-panel">
   <div id="myDiv"><!-- Plotly chart --></div>
 
+  <!-- RR tools: visible only in RR view when there are no marks -->
+  <div id="rrTools" class="rr-tools" style="display:none" aria-label="RR tools">
+    <div class="rr-tools-row">
+      <span class="muted small">No R marks found. Load an RR series to analyze:</span>
+      <button id="loadRRBtn" type="button" style="width:auto; margin-left: 8px;">Load RR series (txt)</button>
+      <input id="rrFileInput" type="file" accept=".txt,.csv" />
+    </div>
+  </div>
+
   <!-- RR series chart (top) shown in RR view -->
   <div id="rrDiv" class="secondary-chart" aria-label="RR series chart"></div>
 

@@ -3,6 +3,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import numpy as np
+def fft_rr(rr: np.ndarray):
+    rr = np.asarray(rr, dtype=np.float64)
+    n = rr.size
+    if n < 2:
+        raise ValueError("RR series too short")
+    # Detrend/normalize
+    mean = rr.mean()
+    std = rr.std()
+    x = (rr - mean) / std if std else (rr - mean)
+    # Real FFT and corresponding frequency bins (cycles per beat)
+    X = np.fft.rfft(x)
+    freq = np.fft.rfftfreq(n, d=1.0)  # one RR sample per beat
+    # Drop DC
+    freq = freq[1:]
+    power = (np.abs(X) ** 2)[1:]
+    # Avoid zeros for log scale
+    power = np.maximum(power, 1e-12)
+    return freq, power
 
 
 class RRFFTRequest(BaseModel):
@@ -13,6 +31,10 @@ class RRFFTResponse(BaseModel):
     rr: List[float]
     freq: List[float]
     power: List[float]
+
+
+class RRArrayRequest(BaseModel):
+    rr: List[float]
 
 
 app = FastAPI(title="ECG RR FFT Service")
@@ -38,15 +60,23 @@ def rr_fft(req: RRFFTRequest):
     if rr.size < 2:
         raise HTTPException(status_code=400, detail="RR series too short")
 
-    # Detrend by removing mean to emphasize variability
-    std = rr.std()
-    x = (rr - rr.mean()) / std if std else rr - rr.mean()
-    n = x.size
-    # Real FFT and corresponding frequency bins (cycles per beat)
-    X = np.fft.rfft(x)
-    freq = np.linspace(0, 0.5, num=X.size//2 + 1)
-    freq = freq[1:]
-    power = np.abs(X[1:X.size//2 + 1]) ** 2
+    freq, power = fft_rr(rr)
+
+    return RRFFTResponse(
+        rr=rr.tolist(),
+        freq=freq.tolist(),
+        power=power.tolist(),
+    )
+
+
+
+@app.post("/api/rr-fft-from-rr", response_model=RRFFTResponse)
+def rr_fft_from_rr(req: RRArrayRequest):
+    rr = np.array([float(x) for x in req.rr], dtype=np.float64)
+    if rr.size < 2:
+        raise HTTPException(status_code=400, detail="RR series too short")
+    
+    freq, power = fft_rr(rr)
 
     return RRFFTResponse(
         rr=rr.tolist(),
