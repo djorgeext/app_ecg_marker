@@ -11,6 +11,8 @@ services:
     volumes:
       - ./backend:/app/backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    security_opt:
+      - apparmor=unconfined
 
   frontend:
     container_name: ecg_marker_frontend
@@ -23,6 +25,8 @@ services:
       - ./src:/var/www/html:ro
     depends_on:
       - backend
+    security_opt:
+      - apparmor=unconfined
     # If you prefer nginx to wait until backend is ready, you could add a simple healthcheck on backend and condition here
     # condition: service_healthy
 

@@ -45,7 +45,8 @@ def rr_fft(req: RRFFTRequest):
     # Real FFT and corresponding frequency bins (cycles per beat)
     X = np.fft.rfft(x)
     freq = np.linspace(0, 0.5, num=X.size//2 + 1)
-    power = np.log10(np.abs(X[:freq.size]) ** 2)
+    freq = freq[1:]
+    power = np.abs(X[1:X.size//2 + 1]) ** 2
 
     return RRFFTResponse(
         rr=rr.tolist(),
