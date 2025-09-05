@@ -13,6 +13,108 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
             return Number.isNaN(n) ? null : n;
           });
 
+// ---- Top-level RR Analysis fallback (no ECG loaded) ----
+(() => {
+  const getEls = () => ({
+    rrAnalysisBtn: document.getElementById('rrAnalysis'),
+    backBtnTop: document.getElementById('backToEcg'),
+    myPlot: document.getElementById('myDiv'),
+    rrDiv: document.getElementById('rrDiv'),
+    fftDiv: document.getElementById('fftDiv'),
+    rrTools: document.getElementById('rrTools'),
+    rightPanel: document.getElementById('channelPanel')
+  });
+
+  const baseHeights = (rightPanel) => {
+    const baseH = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
+    return { hRR: Math.max(200, Math.round(baseH * 0.45)), hFFT: Math.max(200, Math.round(baseH * 0.45)) };
+  };
+  const showStandaloneRR = () => {
+    const { myPlot, rrDiv, fftDiv, rrTools, rightPanel } = getEls();
+    if (myPlot) myPlot.style.display = 'none';
+    if (rrTools) rrTools.style.display = 'block';
+    if (rrDiv) rrDiv.style.display = 'block';
+    if (fftDiv) fftDiv.style.display = 'block';
+    const { hRR, hFFT } = baseHeights(rightPanel);
+    const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
+    const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
+    if (window.Plotly) {
+      Plotly.react(rrDiv, [], layoutRR, { displayModeBar: true });
+      Plotly.react(fftDiv, [], layoutFFT, { displayModeBar: true });
+    }
+    // Wire RR loader (once)
+    const loadRRBtn = document.getElementById('loadRRBtn');
+    const rrFileInput = document.getElementById('rrFileInput');
+    if (loadRRBtn && !loadRRBtn.__wired) {
+      loadRRBtn.__wired = true;
+      loadRRBtn.addEventListener('click', () => rrFileInput && rrFileInput.click());
+      rrFileInput && rrFileInput.addEventListener('change', async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        try {
+          const txt = await f.text();
+          const nums = txt.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).map(Number).filter(v => Number.isFinite(v));
+          if (nums.length < 2) { alert('RR file must contain at least two numeric values.'); return; }
+          const rrX = Array.from({ length: nums.length }, (_, i) => i + 1);
+          const trRR = { x: rrX, y: nums, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
+          const { hRR: h1, hFFT: h2 } = baseHeights(getEls().rightPanel);
+          const layoutRR2 = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: h1 };
+          const layoutFFT2 = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: h2 };
+          Plotly.react(rrDiv, [trRR], layoutRR2, { displayModeBar: true });
+          try {
+            const resp = await fetch('/api/rr-fft-from-rr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rr: nums }) });
+            if (!resp.ok) throw new Error(await resp.text() || ('HTTP '+resp.status));
+            const data = await resp.json();
+            const trFFT = { x: data.freq, y: data.power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
+            Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
+          } catch (err) {
+            console.warn('Backend RR FFT from RR unavailable, computing locally.', err);
+            const n = nums.length;
+            const mean = nums.reduce((a,b)=>a+b,0)/n;
+            const x = nums.map(v => v - mean);
+            const N = n; const half = Math.floor(N/2);
+            const freq = []; const power = [];
+            for (let k=1;k<=half;k++) { let re=0,im=0; for (let t=0;t<N;t++){ const ang=-2*Math.PI*k*t/N; re+=x[t]*Math.cos(ang); im+=x[t]*Math.sin(ang);} freq.push(k/N); power.push(Math.max(re*re+im*im,1e-12)); }
+            const trFFT = { x: freq, y: power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT (local)' };
+            Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
+          }
+          if (rrTools) rrTools.style.display = 'none';
+        } catch(e2) {
+          console.error('Failed to read RR file', e2);
+          alert('Could not read RR file.');
+        }
+      });
+    }
+  };
+
+  const wireTopLevel = () => {
+    const { rrAnalysisBtn, backBtnTop, rrDiv, fftDiv, rrTools, myPlot } = getEls();
+    // Top-level button behavior: use inner handler if ECG loaded, else standalone
+    if (rrAnalysisBtn && !rrAnalysisBtn.__wiredTop) {
+      rrAnalysisBtn.__wiredTop = true;
+      rrAnalysisBtn.addEventListener('click', () => {
+        if (typeof window.__handleRRAnalysis === 'function') return window.__handleRRAnalysis();
+        showStandaloneRR();
+      });
+    }
+    if (backBtnTop && !backBtnTop.__wiredTop) {
+      backBtnTop.__wiredTop = true;
+      backBtnTop.addEventListener('click', () => {
+        if (typeof window.__handleBackToEcg === 'function') return window.__handleBackToEcg();
+        if (rrDiv) { window.Plotly && Plotly.purge(rrDiv); rrDiv.style.display = 'none'; }
+        if (fftDiv) { window.Plotly && Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
+        if (rrTools) rrTools.style.display = 'none';
+        if (myPlot) myPlot.style.display = 'block';
+      });
+    }
+  };
+  // Try immediately (in case DOM is already parsed) and after DOMContentLoaded
+  wireTopLevel();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireTopLevel, { once: true });
+  }
+})();
+
 input.addEventListener('change', function (ev) {
     const f = ev.target.files && ev.target.files[0];
   if (!f) {
@@ -799,8 +901,10 @@ input.addEventListener('change', function (ev) {
             if (rrDiv) Plotly.react(rrDiv, [trace], layout, { displayModeBar: true });
             if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
           };
+          // Expose handler so top-level can reuse when ECG is loaded
+          window.__handleRRAnalysis = renderRROnly;
           rrAnalysisBtn && rrAnalysisBtn.addEventListener('click', renderRROnly);
-          backBtn && backBtn.addEventListener('click', () => {
+          const __backHandler = () => {
             if (rrDiv) { Plotly.purge(rrDiv); rrDiv.style.display = 'none'; }
             if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
             const rrTools = document.getElementById('rrTools');
@@ -809,7 +913,9 @@ input.addEventListener('change', function (ev) {
             const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
-          });
+          };
+          window.__handleBackToEcg = __backHandler;
+          backBtn && backBtn.addEventListener('click', __backHandler);
 
 
           // clicking adds/removes a vertical line mark and persists via indices
