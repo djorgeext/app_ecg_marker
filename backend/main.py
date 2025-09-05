@@ -9,19 +9,29 @@ def fft_rr(rr: np.ndarray):
     if n < 2:
         raise ValueError("RR series too short")
     # Detrend/normalize
-    mean = rr.mean()
-    std = rr.std()
-    x = (rr - mean) / std if std else (rr - mean)
-    # Real FFT and corresponding frequency bins (cycles per beat)
-    X = np.fft.rfft(x)
-    freq = np.fft.rfftfreq(n, d=1.0)  # one RR sample per beat
-    # Drop DC
-    freq = freq[1:]
-    power = (np.abs(X) ** 2)[1:]
-    # Avoid zeros for log scale
-    power = np.maximum(power, 1e-12)
-    return freq, power
+    power = average_psd(rr)
+    freq = np.linspace(0, 0.5, len(power))
+    return freq[1:], power[1:]
 
+def compute_psd(segment):
+    segment = (segment - np.mean(segment))   #/np.std(segment)  # Normalize
+    return np.abs(np.fft.fft(segment))**2  # Power spectral density
+
+def average_psd(series, window_size=4096, overlap=2048):
+    segment_length = overlap + 1
+    avg_psd = np.zeros((segment_length), dtype=np.float32)
+    segments_quantity = len(series) // overlap - 1
+
+    # Compute PSD across segments and flipped series
+    for flip in [False, True]:
+        if flip:
+            series = np.flip(series)
+            for start in range(0, len(series) - window_size + 1, overlap):
+                segment = series[start:start + window_size]
+                avg_psd += compute_psd(segment)[:segment_length]
+
+    avg_psd /= 2 * segments_quantity  # Average PSD for both directions
+    return avg_psd
 
 class RRFFTRequest(BaseModel):
     r_indices: List[int]

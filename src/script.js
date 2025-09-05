@@ -719,7 +719,7 @@ input.addEventListener('change', function (ev) {
 
                     // Try server-side FFT from RR array
                     try {
-                      const resp = await fetch('http://127.0.0.1:8000/api/rr-fft-from-rr', {
+                      const resp = await fetch('/api/rr-fft-from-rr', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ rr: nums })
                       });
@@ -767,7 +767,7 @@ input.addEventListener('change', function (ev) {
 
             // Try server-side FFT first
             try {
-              const resp = await fetch('http://127.0.0.1:8000/api/rr-fft', {
+              const resp = await fetch('/api/rr-fft', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ r_indices: rIdx })
