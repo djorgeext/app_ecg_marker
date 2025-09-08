@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RR Analysis - ECG Marker</title>
+    <link rel="stylesheet" href="styles.css">
+  <!-- Plotly.js served from CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>
+  <script>
+    require.config({
+      paths: {
+  'plotly': 'https://cdn.plot.ly/plotly-2.35.2.min',
+        'plotlyjs-finance': 'https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance',
+        'papaparse': 'https://unpkg.com/papaparse@5.4.1/papaparse.min'
+      },
+      shim: {
+        'plotlyjs-finance': {
+          deps: ['plotly']
+        }
+      }
+    });
+    require(['plotly','plotlyjs-finance','papaparse'], function(Plotly, finance, Papa){
+      // Plotly, the plugin and PapaParse loaded
+    });
+  </script>
+</head>
+<body class="rr-mode">
+  <div class="left-panel">
+    <!-- RR tools: visible when there are no marks from ECG analysis -->
+    <div id="rrTools" class="rr-tools" aria-label="RR tools">
+      <div class="rr-tools-row">
+        <span class="muted small">No R marks found. Load an RR series to analyze:</span>
+        <button id="loadRRBtn" type="button" style="width:auto; margin-left: 8px;">Load RR series (txt)</button>
+        <input id="rrFileInput" type="file" accept=".txt,.csv" />
+      </div>
+    </div>
+
+    <!-- RR series chart (top) -->
+    <div id="rrDiv" class="secondary-chart" aria-label="RR series chart"></div>
+
+    <!-- Secondary result chart for RR FFT (bottom) -->
+    <div id="fftDiv" class="secondary-chart" aria-label="RR FFT chart"></div>
+
+    <!-- Navigator: horizontal scrollbar with arrow buttons -->
+    <div class="navigator-container">
+      <div class="scrollbar-container">
+        <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">&lt;</button>
+        <div id="scrollbar" class="scrollbar"><div id="scrollbarContent"></div></div>
+        <button id="scrollRight" class="scroll-btn" aria-label="Scroll right" title="Right">&gt;</button>
+      </div>
+      <div id="navigatorInfo"></div>
+    </div>
+  </div>
+
+  <!-- Right panel: RR analysis controls -->
+  <div class="right-panel">
+    <aside id="channelPanel">
+      <div class="block">
+        <button id="backToEcg" title="Return to ECG analysis">Back to ECG Analysis</button>
+      </div>
+      
+      <div class="block">
+        <button id="computeRRFFTNow">Compute FFT</button>
+      </div>
+      
+      <div class="hint small muted block">Navigate with arrows or scroll to explore RR series</div>
+    </aside>
+  </div>
+
+  <!-- Scripts for RR analysis functionality -->
+  <script src="script.js"></script>
+  <script src="rr_script.js"></script>
+</body>
+</html>
