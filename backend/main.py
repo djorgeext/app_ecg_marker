@@ -3,15 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import numpy as np
-def fft_rr(rr: np.ndarray):
-    rr = np.asarray(rr, dtype=np.float64)
-    n = rr.size
-    if n < 2:
-        raise ValueError("RR series too short")
-    # Detrend/normalize
-    power = average_psd(rr)
-    freq = np.linspace(0, 0.5, len(power))
-    return freq[1:], power[1:]
 
 def compute_psd(segment):
     segment = (segment - np.mean(segment))   #/np.std(segment)  # Normalize
@@ -32,6 +23,13 @@ def average_psd(series, window_size=4096, overlap=2048):
 
     avg_psd /= 2 * segments_quantity  # Average PSD for both directions
     return avg_psd
+
+def fft_rr(rr: np.ndarray):
+    rr = np.asarray(rr, dtype=np.float64)
+    n = rr.size
+    power = average_psd(rr)
+    freq = np.linspace(0, 0.5, len(power))
+    return freq[1:], power[1:]
 
 class RRFFTRequest(BaseModel):
     r_indices: List[int]
@@ -69,8 +67,14 @@ def rr_fft(req: RRFFTRequest):
     rr = np.diff(r).astype(np.float64)
     if rr.size < 2:
         raise HTTPException(status_code=400, detail="RR series too short")
-
-    freq, power = fft_rr(rr)
+    elif rr.size > 1024:
+        freq, power = fft_rr(rr)
+    else:
+        rr = np.asarray(rr, dtype=np.float64)
+        n = rr.size
+        rr = (rr - np.mean(rr))/np.std(rr)  # Normalize
+        freq = np.linspace(0, 0.5, n//2 + 1)[1:]
+        power = np.abs(np.fft.rfft(rr)[1:])**2
 
     return RRFFTResponse(
         rr=rr.tolist(),
