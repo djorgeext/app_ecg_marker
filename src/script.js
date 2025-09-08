@@ -30,6 +30,20 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
     return { hRR: Math.max(200, Math.round(baseH * 0.45)), hFFT: Math.max(200, Math.round(baseH * 0.45)) };
   };
 
+  // Explicit toggles in addition to CSS to avoid inline style conflicts
+  const showRRControls = () => {
+    try {
+      document.querySelectorAll('.rr-only').forEach(el => { el.style.display = 'block'; });
+      document.querySelectorAll('.ecg-only').forEach(el => { el.style.display = 'none'; });
+    } catch (e) {}
+  };
+  const showECGControls = () => {
+    try {
+      document.querySelectorAll('.ecg-only').forEach(el => { el.style.display = 'block'; });
+      document.querySelectorAll('.rr-only').forEach(el => { el.style.display = 'none'; });
+    } catch (e) {}
+  };
+
   // RR-mode navigator state and helpers
   const getNavEls = () => ({
     sb: document.getElementById('scrollbar'),
@@ -187,6 +201,7 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
     const { myPlot, rrDiv, fftDiv, rrTools, rightPanel } = getEls();
     if (myPlot) myPlot.style.display = 'none';
     document.body && document.body.classList.add('rr-mode');
+  showRRControls();
     if (rrTools) rrTools.style.display = 'block';
     if (rrDiv) rrDiv.style.display = 'block';
     if (fftDiv) { window.Plotly && Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
@@ -239,6 +254,13 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
       fftBtn.__wiredTop = true;
       fftBtn.addEventListener('click', () => window.__computeRRFFTNow && window.__computeRRFFTNow());
     }
+    // Sidebar RR loader mirrors the banner button
+    const loadRRBtnSide = document.getElementById('loadRRBtnSide');
+    const rrFileInput = document.getElementById('rrFileInput');
+    if (loadRRBtnSide && !loadRRBtnSide.__wiredTop) {
+      loadRRBtnSide.__wiredTop = true;
+      loadRRBtnSide.addEventListener('click', () => rrFileInput && rrFileInput.click());
+    }
     if (backBtnTop && !backBtnTop.__wiredTop) {
       backBtnTop.__wiredTop = true;
       backBtnTop.addEventListener('click', () => {
@@ -248,6 +270,7 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
         if (rrTools) rrTools.style.display = 'none';
         if (myPlot) myPlot.style.display = 'block';
         document.body && document.body.classList.remove('rr-mode');
+  showECGControls();
       });
     }
     // Wire navigator for RR mode once
@@ -938,6 +961,8 @@ input.addEventListener('change', function (ev) {
             if (rrDiv) rrDiv.style.display = 'block';
             if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
             document.body && document.body.classList.add('rr-mode');
+            // make sure RR-only sidebar controls are visible
+            try { document.querySelectorAll('.rr-only').forEach(el => el.style.display = 'block'); document.querySelectorAll('.ecg-only').forEach(el => el.style.display = 'none'); } catch(e) {}
             const rrTools = document.getElementById('rrTools');
             // If no marks, show tools banner and empty plots
             if (!rIdx.length) {
@@ -1031,6 +1056,7 @@ input.addEventListener('change', function (ev) {
             if (rrTools) rrTools.style.display = 'none';
             if (myPlot) { myPlot.style.display = 'block'; }
             document.body && document.body.classList.remove('rr-mode');
+            try { document.querySelectorAll('.ecg-only').forEach(el => el.style.display = 'block'); document.querySelectorAll('.rr-only').forEach(el => el.style.display = 'none'); } catch(e) {}
             const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
