@@ -6,37 +6,39 @@ document.addEventListener('DOMContentLoaded', function() {
   // Set body to RR mode
   document.body.classList.add('rr-mode');
   
-  // Override the "Back to ECG Analysis" button
-  const backToEcgBtn = document.getElementById('backToEcg');
-  if (backToEcgBtn) {
-    backToEcgBtn.addEventListener('click', function() {
-      // Navigate back to ECG analysis page
-      window.location.href = 'ecg_analysis.html';
+  // Override the "Back to ECG Analysis" button with a delay to ensure DOM is ready
+  setTimeout(function() {
+    const backToEcgBtn = document.getElementById('backToEcg');
+    if (backToEcgBtn) {
+      backToEcgBtn.addEventListener('click', function() {
+        // Navigate back to ECG analysis page
+        window.location.href = 'ecg_analysis.html';
+      });
+    }
+    
+    // Hide ECG-only elements
+    const ecgElements = document.querySelectorAll('.ecg-only');
+    ecgElements.forEach(el => {
+      el.style.display = 'none';
     });
-  }
-  
-  // Hide ECG-only elements
-  const ecgElements = document.querySelectorAll('.ecg-only');
-  ecgElements.forEach(el => {
-    el.style.display = 'none';
-  });
-  
-  // Hide the main ECG plot
-  const myPlot = document.getElementById('myDiv');
-  if (myPlot) {
-    myPlot.style.display = 'none';
-  }
-  
-  // Show RR-related elements
-  const rrDiv = document.getElementById('rrDiv');
-  if (rrDiv) {
-    rrDiv.style.display = 'block';
-  }
-  
-  const rrTools = document.getElementById('rrTools');
-  if (rrTools) {
-    rrTools.style.display = 'block';
-  }
+    
+    // Hide the main ECG plot
+    const myPlot = document.getElementById('myDiv');
+    if (myPlot) {
+      myPlot.style.display = 'none';
+    }
+    
+    // Show RR-related elements
+    const rrDiv = document.getElementById('rrDiv');
+    if (rrDiv) {
+      rrDiv.style.display = 'block';
+    }
+    
+    const rrTools = document.getElementById('rrTools');
+    if (rrTools) {
+      rrTools.style.display = 'block';
+    }
+  }, 100);
   
   // Try to load data from ECG analysis if available
   const loadFromEcgData = () => {
@@ -63,12 +65,13 @@ document.addEventListener('DOMContentLoaded', function() {
           
           if (rrIntervals.length > 0) {
             // Hide RR tools since we have data from ECG
+            const rrTools = document.getElementById('rrTools');
             if (rrTools) {
               rrTools.style.display = 'none';
             }
             
             // Plot RR intervals
-            if (window.Plotly && rrDiv) {
+            if (typeof window.Plotly !== 'undefined' && window.Plotly && rrDiv) {
               const rrX = Array.from({ length: rrIntervals.length }, (_, i) => i + 1);
               const trRR = { 
                 x: rrX, 
@@ -87,11 +90,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 height: 400 
               };
               
-              Plotly.react(rrDiv, [trRR], layoutRR, { displayModeBar: true });
+              window.Plotly.react(rrDiv, [trRR], layoutRR, { displayModeBar: true });
               window.__rrCurrentRR = rrIntervals.slice();
               
               // Initialize RR scrolling if function exists
-              if (window.__rrInitScroll) {
+              if (typeof window.__rrInitScroll === 'function') {
                 window.__rrInitScroll(rrIntervals.length);
               }
             }
@@ -103,6 +106,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   };
   
-  // Load data after a short delay to ensure all scripts are loaded
-  setTimeout(loadFromEcgData, 100);
+  // Load data after a delay to ensure all scripts are loaded
+  setTimeout(loadFromEcgData, 500);
 });
