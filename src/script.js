@@ -29,19 +29,172 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
     const baseH = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
     return { hRR: Math.max(200, Math.round(baseH * 0.45)), hFFT: Math.max(200, Math.round(baseH * 0.45)) };
   };
+
+  // RR-mode navigator state and helpers
+  const getNavEls = () => ({
+    sb: document.getElementById('scrollbar'),
+    sbContent: document.getElementById('scrollbarContent'),
+    navInfo: document.getElementById('navigatorInfo'),
+    btnLeft: document.getElementById('scrollLeft'),
+    btnRight: document.getElementById('scrollRight'),
+    rrDiv: document.getElementById('rrDiv')
+  });
+  const rrState = () => (window.__rrScroll || { total: 0, window: 0, start: 0 });
+  const rrSetState = (s) => { window.__rrScroll = Object.assign({}, rrState(), s); };
+  const rrApplyRange = () => {
+    const { rrDiv } = getNavEls();
+    const st = rrState();
+    if (!rrDiv || !rrDiv.data || !rrDiv.data.length || st.window <= 0) return;
+    const x0 = (st.start + 1);
+    const x1 = Math.min(st.total, st.start + st.window);
+    try { Plotly.relayout(rrDiv, { 'xaxis.range': [x0, x1] }); } catch (e) { /* ignore */ }
+  };
+  const rrUpdateInfo = () => {
+    const { navInfo } = getNavEls();
+    const st = rrState();
+    if (!navInfo || !st.total) return;
+    const start = st.start + 1;
+    const end = Math.min(st.total, st.start + st.window);
+    navInfo.innerText = `RR Window: ${start} - ${end} / ${st.total}`;
+  };
+  const rrSyncScrollToCurrent = () => {
+    const { sb, sbContent } = getNavEls();
+    const st = rrState();
+    if (!sb || !sbContent || !st.total) return;
+    const maxScroll = sbContent.scrollWidth - sb.clientWidth;
+    const maxStart = Math.max(0, st.total - st.window);
+    const pos = maxStart > 0 ? (st.start / maxStart) * maxScroll : 0;
+    sb.scrollLeft = isFinite(pos) ? pos : 0;
+  };
+  const rrSetScrollbar = () => {
+    const { sb, sbContent } = getNavEls();
+    const st = rrState();
+    if (!sb || !sbContent || !st.total) return;
+    const ratio = st.total / Math.max(st.window || 1, 1);
+    sbContent.style.width = `${Math.max(ratio * 100, 500)}px`;
+    rrSyncScrollToCurrent();
+  };
+  const wireNavigatorRR = () => {
+    const { sb, btnLeft, btnRight } = getNavEls();
+    if (sb && !sb.__rrWired) {
+      sb.__rrWired = true;
+      sb.addEventListener('scroll', () => {
+        if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+        const { sb, sbContent } = getNavEls();
+        const st = rrState();
+        const maxScroll = sbContent.scrollWidth - sb.clientWidth;
+        const frac = maxScroll > 0 ? (sb.scrollLeft / maxScroll) : 0;
+        const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
+        rrSetState({ start: Math.round(frac * maxStart) });
+        rrApplyRange();
+        rrUpdateInfo();
+      });
+    }
+    if (!window.__rrKeydownWired) {
+      window.__rrKeydownWired = true;
+      window.addEventListener('keydown', (e) => {
+        if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          const st = rrState();
+          const step = e.shiftKey ? Math.max(1, Math.floor(st.window * 0.5)) : Math.max(1, Math.floor(st.window * 0.1));
+          const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
+          rrSetState({ start: Math.min(maxStart, Math.max(0, st.start + (e.key === 'ArrowLeft' ? -step : step))) });
+          rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+          e.preventDefault();
+        }
+      });
+    }
+    const stepSmall = () => { const st = rrState(); return Math.max(1, Math.floor((st.window || 100) * 0.1)); };
+    const stepLarge = () => { const st = rrState(); return Math.max(1, Math.floor((st.window || 100) * 0.5)); };
+    if (btnLeft && !btnLeft.__rrWired) {
+      btnLeft.__rrWired = true;
+      btnLeft.addEventListener('click', (e) => {
+        if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+        e.preventDefault();
+        const st = rrState();
+        rrSetState({ start: Math.max(0, st.start - stepSmall()) });
+        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+      });
+      btnLeft.addEventListener('contextmenu', (e) => {
+        if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+        e.preventDefault();
+        const st = rrState();
+        rrSetState({ start: Math.max(0, st.start - stepLarge()) });
+        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+      });
+    }
+    if (btnRight && !btnRight.__rrWired) {
+      btnRight.__rrWired = true;
+      btnRight.addEventListener('click', (e) => {
+        if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+        e.preventDefault();
+        const st = rrState();
+        const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
+        rrSetState({ start: Math.min(maxStart, st.start + stepSmall()) });
+        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+      });
+      btnRight.addEventListener('contextmenu', (e) => {
+        if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+        e.preventDefault();
+        const st = rrState();
+        const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
+        rrSetState({ start: Math.min(maxStart, st.start + stepLarge()) });
+        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+      });
+    }
+  };
+  window.__rrInitScroll = (total) => {
+    total = Math.max(0, Number(total) || 0);
+    if (!total) { window.__rrScroll = { total: 0, window: 0, start: 0 }; rrUpdateInfo(); return; }
+    const win = Math.max(10, Math.min(200, Math.floor(total * 0.2)));
+    rrSetState({ total, window: win, start: 0 });
+    rrSetScrollbar(); rrApplyRange(); rrUpdateInfo();
+  };
+
+  // FFT on-demand from current RR array
+  window.__computeRRFFTNow = async () => {
+    const { rrDiv, fftDiv, rightPanel } = getEls();
+    if (!rrDiv || !fftDiv || !window.Plotly) return;
+    let rrArr = Array.isArray(window.__rrCurrentRR) ? window.__rrCurrentRR.slice() : null;
+    if ((!rrArr || rrArr.length < 2) && rrDiv.data && rrDiv.data.length) {
+      const y = rrDiv.data[0] && rrDiv.data[0].y;
+      if (Array.isArray(y) && y.length >= 2) rrArr = y.slice();
+    }
+    if (!rrArr || rrArr.length < 2) { alert('No RR series available. Load or compute RR first.'); return; }
+    const { hFFT } = baseHeights(rightPanel);
+    const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
+    try {
+      const resp = await fetch('/api/rr-fft-from-rr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rr: rrArr }) });
+      if (!resp.ok) throw new Error(await resp.text() || ('HTTP '+resp.status));
+      const data = await resp.json();
+      const trFFT = { x: data.freq, y: data.power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
+      Plotly.react(fftDiv, [trFFT], layoutFFT, { displayModeBar: true });
+    } catch (err) {
+      console.warn('Backend RR FFT from RR unavailable, computing locally.', err);
+      const n = rrArr.length;
+      const mean = rrArr.reduce((a,b)=>a+b,0)/n;
+      const x = rrArr.map(v => v - mean);
+      const N = n; const half = Math.floor(N/2);
+      const freq = []; const power = [];
+      for (let k=1;k<=half;k++) { let re=0,im=0; for (let t=0;t<N;t++){ const ang=-2*Math.PI*k*t/N; re+=x[t]*Math.cos(ang); im+=x[t]*Math.sin(ang);} freq.push(k/N); power.push(Math.max(re*re+im*im,1e-12)); }
+      const trFFT = { x: freq, y: power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT (local)' };
+      Plotly.react(fftDiv, [trFFT], layoutFFT, { displayModeBar: true });
+    }
+    fftDiv.style.display = 'block';
+  };
+
   const showStandaloneRR = () => {
     const { myPlot, rrDiv, fftDiv, rrTools, rightPanel } = getEls();
     if (myPlot) myPlot.style.display = 'none';
+    document.body && document.body.classList.add('rr-mode');
     if (rrTools) rrTools.style.display = 'block';
     if (rrDiv) rrDiv.style.display = 'block';
-    if (fftDiv) fftDiv.style.display = 'block';
-    const { hRR, hFFT } = baseHeights(rightPanel);
+    if (fftDiv) { window.Plotly && Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
+    window.__rrCurrentRR = null;
+    const { hRR } = baseHeights(rightPanel);
     const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
-    const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
-    if (window.Plotly) {
-      Plotly.react(rrDiv, [], layoutRR, { displayModeBar: true });
-      Plotly.react(fftDiv, [], layoutFFT, { displayModeBar: true });
-    }
+    if (window.Plotly) Plotly.react(rrDiv, [], layoutRR, { displayModeBar: true });
+
     // Wire RR loader (once)
     const loadRRBtn = document.getElementById('loadRRBtn');
     const rrFileInput = document.getElementById('rrFileInput');
@@ -57,28 +210,13 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
           if (nums.length < 2) { alert('RR file must contain at least two numeric values.'); return; }
           const rrX = Array.from({ length: nums.length }, (_, i) => i + 1);
           const trRR = { x: rrX, y: nums, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
-          const { hRR: h1, hFFT: h2 } = baseHeights(getEls().rightPanel);
+          const { hRR: h1 } = baseHeights(getEls().rightPanel);
           const layoutRR2 = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: h1 };
-          const layoutFFT2 = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: h2 };
           Plotly.react(rrDiv, [trRR], layoutRR2, { displayModeBar: true });
-          try {
-            const resp = await fetch('/api/rr-fft-from-rr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rr: nums }) });
-            if (!resp.ok) throw new Error(await resp.text() || ('HTTP '+resp.status));
-            const data = await resp.json();
-            const trFFT = { x: data.freq, y: data.power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
-            Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
-          } catch (err) {
-            console.warn('Backend RR FFT from RR unavailable, computing locally.', err);
-            const n = nums.length;
-            const mean = nums.reduce((a,b)=>a+b,0)/n;
-            const x = nums.map(v => v - mean);
-            const N = n; const half = Math.floor(N/2);
-            const freq = []; const power = [];
-            for (let k=1;k<=half;k++) { let re=0,im=0; for (let t=0;t<N;t++){ const ang=-2*Math.PI*k*t/N; re+=x[t]*Math.cos(ang); im+=x[t]*Math.sin(ang);} freq.push(k/N); power.push(Math.max(re*re+im*im,1e-12)); }
-            const trFFT = { x: freq, y: power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT (local)' };
-            Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
-          }
+          window.__rrCurrentRR = nums.slice();
+          if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
           if (rrTools) rrTools.style.display = 'none';
+          window.__rrInitScroll && window.__rrInitScroll(nums.length);
         } catch(e2) {
           console.error('Failed to read RR file', e2);
           alert('Could not read RR file.');
@@ -89,13 +227,17 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
 
   const wireTopLevel = () => {
     const { rrAnalysisBtn, backBtnTop, rrDiv, fftDiv, rrTools, myPlot } = getEls();
-    // Top-level button behavior: use inner handler if ECG loaded, else standalone
     if (rrAnalysisBtn && !rrAnalysisBtn.__wiredTop) {
       rrAnalysisBtn.__wiredTop = true;
       rrAnalysisBtn.addEventListener('click', () => {
         if (typeof window.__handleRRAnalysis === 'function') return window.__handleRRAnalysis();
         showStandaloneRR();
       });
+    }
+    const fftBtn = document.getElementById('computeRRFFTNow');
+    if (fftBtn && !fftBtn.__wiredTop) {
+      fftBtn.__wiredTop = true;
+      fftBtn.addEventListener('click', () => window.__computeRRFFTNow && window.__computeRRFFTNow());
     }
     if (backBtnTop && !backBtnTop.__wiredTop) {
       backBtnTop.__wiredTop = true;
@@ -105,9 +247,16 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
         if (fftDiv) { window.Plotly && Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
         if (rrTools) rrTools.style.display = 'none';
         if (myPlot) myPlot.style.display = 'block';
+        document.body && document.body.classList.remove('rr-mode');
       });
     }
+    // Wire navigator for RR mode once
+    if (!window.__rrNavigatorWired) {
+      window.__rrNavigatorWired = true;
+      wireNavigatorRR();
+    }
   };
+
   // Try immediately (in case DOM is already parsed) and after DOMContentLoaded
   wireTopLevel();
   if (document.readyState === 'loading') {
@@ -689,6 +838,7 @@ input.addEventListener('change', function (ev) {
           // scroll -> window mapping
           if (sb) {
             sb.addEventListener('scroll', () => {
+              if (document.body && document.body.classList.contains('rr-mode')) return; // disable ECG scrolling in RR mode
               const maxScroll = sbContent.scrollWidth - sb.clientWidth;
               const frac = maxScroll > 0 ? (sb.scrollLeft / maxScroll) : 0;
               currentStart = Math.round(frac * maxStart);
@@ -699,6 +849,7 @@ input.addEventListener('change', function (ev) {
           }
           // keyboard navigation: arrows and shift for big steps
           window.addEventListener('keydown', (e) => {
+            if (document.body && document.body.classList.contains('rr-mode')) return; // disable ECG keyboard nav in RR mode
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
               const step = e.shiftKey ? Math.max(1, Math.floor(windowSize * 0.5)) : Math.max(1, Math.floor(windowSize * 0.1));
               currentStart = Math.min(maxStart, Math.max(0, currentStart + (e.key === 'ArrowLeft' ? -step : step)));
@@ -722,36 +873,40 @@ input.addEventListener('change', function (ev) {
           if (btnLeft) {
             btnLeft.addEventListener('click', (e) => {
               e.preventDefault();
+              if (document.body && document.body.classList.contains('rr-mode')) return;
               currentStart = Math.max(0, currentStart - stepSmall());
               syncScrollToCurrent();
             });
             btnLeft.addEventListener('contextmenu', (e) => {
               e.preventDefault();
+              if (document.body && document.body.classList.contains('rr-mode')) return;
               currentStart = Math.max(0, currentStart - stepLarge());
               syncScrollToCurrent();
             });
-            btnLeft.addEventListener('mousedown', (e) => { e.preventDefault(); startHold('left'); });
+            btnLeft.addEventListener('mousedown', (e) => { e.preventDefault(); if (document.body && document.body.classList.contains('rr-mode')) return; startHold('left'); });
             btnLeft.addEventListener('mouseup', stopHold);
             btnLeft.addEventListener('mouseleave', stopHold);
-            btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); startHold('left'); }, { passive: false });
+            btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); if (document.body && document.body.classList.contains('rr-mode')) return; startHold('left'); }, { passive: false });
             btnLeft.addEventListener('touchend', stopHold);
             btnLeft.addEventListener('touchcancel', stopHold);
           }
           if (btnRight) {
             btnRight.addEventListener('click', (e) => {
               e.preventDefault();
+              if (document.body && document.body.classList.contains('rr-mode')) return;
               currentStart = Math.min(maxStart, currentStart + stepSmall());
               syncScrollToCurrent();
             });
             btnRight.addEventListener('contextmenu', (e) => {
               e.preventDefault();
+              if (document.body && document.body.classList.contains('rr-mode')) return;
               currentStart = Math.min(maxStart, currentStart + stepLarge());
               syncScrollToCurrent();
             });
-            btnRight.addEventListener('mousedown', (e) => { e.preventDefault(); startHold('right'); });
+            btnRight.addEventListener('mousedown', (e) => { e.preventDefault(); if (document.body && document.body.classList.contains('rr-mode')) return; startHold('right'); });
             btnRight.addEventListener('mouseup', stopHold);
             btnRight.addEventListener('mouseleave', stopHold);
-            btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); startHold('right'); }, { passive: false });
+            btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); if (document.body && document.body.classList.contains('rr-mode')) return; startHold('right'); }, { passive: false });
             btnRight.addEventListener('touchend', stopHold);
             btnRight.addEventListener('touchcancel', stopHold);
           }
@@ -781,7 +936,8 @@ input.addEventListener('change', function (ev) {
             const rIdx = marksAll.filter(m => m.type === 'R').map(m => m.idx).sort((a,b)=>a-b);
             if (myPlot) myPlot.style.display = 'none';
             if (rrDiv) rrDiv.style.display = 'block';
-            if (fftDiv) fftDiv.style.display = 'block';
+            if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
+            document.body && document.body.classList.add('rr-mode');
             const rrTools = document.getElementById('rrTools');
             // If no marks, show tools banner and empty plots
             if (!rIdx.length) {
@@ -789,11 +945,9 @@ input.addEventListener('change', function (ev) {
               // empty RR chart
               const baseH = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
               const hRR = Math.max(200, Math.round(baseH * 0.45));
-              const hFFT = Math.max(200, Math.round(baseH * 0.45));
               const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
-              const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
               if (rrDiv) Plotly.react(rrDiv, [], layoutRR, { displayModeBar: true });
-              if (fftDiv) Plotly.react(fftDiv, [], layoutFFT, { displayModeBar: true });
+              if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
 
               // wire RR loader button
               const loadRRBtn = document.getElementById('loadRRBtn');
@@ -814,46 +968,11 @@ input.addEventListener('change', function (ev) {
                     const trRR = { x: rrX, y: nums, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
                     const baseH2 = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
                     const hRR2 = Math.max(200, Math.round(baseH2 * 0.45));
-                    const hFFT2 = Math.max(200, Math.round(baseH2 * 0.45));
                     const layoutRR2 = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR2 };
-                    const layoutFFT2 = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT2 };
                     Plotly.react(rrDiv, [trRR], layoutRR2, { displayModeBar: true });
-
-                    // Try server-side FFT from RR array
-                    try {
-                      const resp = await fetch('/api/rr-fft-from-rr', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ rr: nums })
-                      });
-                      if (!resp.ok) throw new Error(await resp.text() || ('HTTP '+resp.status));
-                      const data = await resp.json();
-                      const trFFT = { x: data.freq, y: data.power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
-                      Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
-                    } catch (err) {
-                      console.warn('Backend RR FFT from RR unavailable, computing locally.', err);
-                      // Local FFT fallback (cycles/beat)
-                      const n = nums.length;
-                      const mean = nums.reduce((a,b)=>a+b,0)/n;
-                      const x = nums.map(v => v - mean);
-                      // Use real FFT via naive DFT fallback? We don't have FFT lib, so approximate via autocorr periodogram? Instead, simple power at few bins
-                      // Lightweight DFT for first N/2 bins
-                      const N = n;
-                      const half = Math.floor(N/2);
-                      const freq = [];
-                      const power = [];
-                      for (let k = 1; k <= half; k++) {
-                        let re = 0, im = 0;
-                        for (let t = 0; t < N; t++) {
-                          const ang = -2 * Math.PI * k * t / N;
-                          re += x[t] * Math.cos(ang);
-                          im += x[t] * Math.sin(ang);
-                        }
-                        freq.push(k / N);
-                        power.push(re*re + im*im);
-                      }
-                      const trFFT = { x: freq, y: power.map(v => Math.max(v, 1e-12)), type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT (local)' };
-                      Plotly.react(fftDiv, [trFFT], layoutFFT2, { displayModeBar: true });
-                    }
+                    // Save RR and wait for explicit FFT request
+                    window.__rrCurrentRR = nums.slice();
+                    if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
                     if (rrTools) rrTools.style.display = 'none';
                   } catch (err2) {
                     console.error('Failed to read RR file', err2);
@@ -867,7 +986,7 @@ input.addEventListener('change', function (ev) {
               if (rrTools) rrTools.style.display = 'none';
             }
 
-            // Try server-side FFT first
+            // Compute RR only; defer FFT until user clicks FFT button
             try {
               const resp = await fetch('/api/rr-fft', {
                 method: 'POST',
@@ -880,14 +999,13 @@ input.addEventListener('change', function (ev) {
               // Build two separate plots
               const rrX = Array.from({ length: data.rr.length }, (_, i) => i + 1);
               const trRR = { x: rrX, y: data.rr, type: 'scatter', mode: 'lines+markers', line: { color: '#111827' }, marker: { size: 5, color: '#2563eb' }, name: 'RR (samples)' };
-              const trFFT = { x: data.freq, y: data.power, type: 'scatter', mode: 'lines', line: { width: 1.2, color: '#2563eb' }, name: 'RR FFT' };
               const baseH = rightPanel ? Math.max(420, Math.min(800, rightPanel.clientHeight)) : 560;
               const hRR = Math.max(200, Math.round(baseH * 0.45));
-              const hFFT = Math.max(200, Math.round(baseH * 0.45));
               const layoutRR = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: hRR };
-              const layoutFFT = { margin: { t: 20, r: 30, l: 50, b: 40 }, xaxis: { title: 'Frequency (cycles/beat)', type: 'log' }, yaxis: { title: 'Power', type: 'log' }, height: hFFT };
               if (rrDiv) Plotly.react(rrDiv, [trRR], layoutRR, { displayModeBar: true });
-              if (fftDiv) Plotly.react(fftDiv, [trFFT], layoutFFT, { displayModeBar: true });
+              // store RR for on-demand FFT
+              window.__rrCurrentRR = Array.isArray(data.rr) ? data.rr.slice() : [];
+              window.__rrInitScroll && window.__rrInitScroll(Array.isArray(data.rr) ? data.rr.length : 0);
               return;
             } catch (err) {
               console.warn('Backend RR FFT unavailable, falling back to RR-only chart.', err);
@@ -900,6 +1018,8 @@ input.addEventListener('change', function (ev) {
             const layout = { margin: { t: 40, r: 30, l: 50, b: 40 }, xaxis: { title: 'Beat index' }, yaxis: { title: 'RR (samples)' }, height: Math.max(260, rightPanel ? Math.min(600, rightPanel.clientHeight) : 360) };
             if (rrDiv) Plotly.react(rrDiv, [trace], layout, { displayModeBar: true });
             if (fftDiv) { Plotly.purge(fftDiv); fftDiv.style.display = 'none'; }
+            window.__rrCurrentRR = rr.slice();
+            window.__rrInitScroll && window.__rrInitScroll(rr.length);
           };
           // Expose handler so top-level can reuse when ECG is loaded
           window.__handleRRAnalysis = renderRROnly;
@@ -910,6 +1030,7 @@ input.addEventListener('change', function (ev) {
             const rrTools = document.getElementById('rrTools');
             if (rrTools) rrTools.style.display = 'none';
             if (myPlot) { myPlot.style.display = 'block'; }
+            document.body && document.body.classList.remove('rr-mode');
             const start = Number(currentStart || 0);
             const end = Math.min(fullX.length, start + windowSize);
             renderWindow(start, end);
