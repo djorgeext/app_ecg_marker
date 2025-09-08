@@ -1,4 +1,4 @@
-# ECG Marker - Descripción para LinkedIn
+# ECG Marker
 
 **Aplicación Web de Análisis y Marcación de Electrocardiogramas**
 
