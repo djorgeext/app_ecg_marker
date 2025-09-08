@@ -42,11 +42,6 @@ document.addEventListener('DOMContentLoaded', function() {
       backToEcgBtn.style.display = 'none';
     }
     
-    const computeFFTBtn = document.getElementById('computeRRFFTNow');
-    if (computeFFTBtn) {
-      computeFFTBtn.style.display = 'none';
-    }
-    
     // Hide RR-related elements
     const rrDiv = document.getElementById('rrDiv');
     if (rrDiv) {
