@@ -94,6 +94,12 @@ body {
 .right-panel { width: var(--panel-w); }
 .left-panel { min-width: 0; }
 
+/* Toggle visibility between ECG and RR modes */
+.ecg-only { display: block; }
+.rr-only { display: none; }
+body.rr-mode .ecg-only { display: none; }
+body.rr-mode .rr-only { display: block; }
+
 /* ========== Blocks & Typography ========== */
 .block { margin-top: 0.75rem; }
 #statusOutput { margin-top: 0.625rem; color: #108a00; font-weight: 600; }
