@@ -84,8 +84,19 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
     const { sb, sbContent } = getNavEls();
     const st = rrState();
     if (!sb || !sbContent || !st.total) return;
+    
+    // Calculate ratio of total data points to visible window
     const ratio = st.total / Math.max(st.window || 1, 1);
-    sbContent.style.width = `${Math.max(ratio * 100, 500)}px`;
+    
+    // Calculate a meaningful scrollbar width based on container width
+    const containerWidth = sb.clientWidth || 800; // fallback to reasonable default
+    
+    // Make scrollbar content proportionally wider to ensure visible scrolling
+    // The multiplier ensures the scrollbar content is always larger than container
+    const minMultiplier = 1.5; // Minimum 1.5x container width for scrolling
+    const contentWidth = Math.max(ratio * containerWidth, containerWidth * minMultiplier);
+    
+    sbContent.style.width = `${contentWidth}px`;
     rrSyncScrollToCurrent();
   };
   const wireNavigatorRR = () => {
@@ -163,7 +174,67 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
     const win = Math.max(10, Math.min(200, Math.floor(total * 0.2)));
     rrSetState({ total, window: win, start: 0 });
     rrSetScrollbar(); rrApplyRange(); rrUpdateInfo();
+    
+    // Wire up plot event listeners for zoom synchronization
+    const { rrDiv } = getNavEls();
+    if (rrDiv && window.Plotly) {
+      // Listen for plot relayout events (zoom, pan, resize)
+      rrDiv.on('plotly_relayout', (eventData) => {
+        // Handle zoom/pan events and update scrolling accordingly
+        if (eventData['xaxis.range[0]'] !== undefined && eventData['xaxis.range[1]'] !== undefined) {
+          const newStart = Math.max(0, Math.floor(eventData['xaxis.range[0]']) - 1);
+          const newEnd = Math.min(total, Math.ceil(eventData['xaxis.range[1]']));
+          const newWindow = newEnd - newStart;
+          
+          // Update scroll state to match the zoom
+          rrSetState({ start: newStart, window: Math.max(1, newWindow) });
+          rrSetScrollbar(); rrUpdateInfo();
+        }
+        
+        // Handle plot resize
+        if (eventData['width'] || eventData['height']) {
+          // Recalculate scrollbar on plot resize
+          rrSetScrollbar();
+        }
+      });
+    }
   };
+
+  // Add responsive resizing for RR plots
+  window.__rrHandleResize = () => {
+    if (!(document.body && document.body.classList.contains('rr-mode'))) return;
+    
+    const { rrDiv, fftDiv, rightPanel } = getEls();
+    if (!rrDiv || !window.Plotly) return;
+    
+    // Calculate new heights based on current window/panel size
+    const { hRR, hFFT } = baseHeights(rightPanel);
+    
+    // Update RR plot height
+    const currentLayout = rrDiv.layout || {};
+    const newLayout = { ...currentLayout, height: hRR };
+    window.Plotly.relayout(rrDiv, newLayout);
+    
+    // Update FFT plot height if visible
+    if (fftDiv && fftDiv.style.display !== 'none') {
+      const currentFFTLayout = fftDiv.layout || {};
+      const newFFTLayout = { ...currentFFTLayout, height: hFFT };
+      window.Plotly.relayout(fftDiv, newFFTLayout);
+    }
+    
+    // Recalculate scrollbar dimensions
+    rrSetScrollbar();
+  };
+
+  // Wire up window resize listener for responsive plots
+  if (!window.__rrResizeWired) {
+    window.__rrResizeWired = true;
+    window.addEventListener('resize', () => {
+      // Debounce resize events
+      clearTimeout(window.__rrResizeTimeout);
+      window.__rrResizeTimeout = setTimeout(window.__rrHandleResize, 250);
+    });
+  }
 
   // FFT on-demand from current RR array
   window.__computeRRFFTNow = async () => {

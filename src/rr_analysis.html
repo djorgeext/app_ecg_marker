@@ -5,26 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RR Analysis - ECG Marker</title>
     <link rel="stylesheet" href="styles.css">
-  <!-- Plotly.js served from CDN -->
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js"></script>
-  <script>
-    require.config({
-      paths: {
-  'plotly': 'https://cdn.plot.ly/plotly-2.35.2.min',
-        'plotlyjs-finance': 'https://cdn.rawgit.com/etpinard/plotlyjs-finance/master/plotlyjs-finance',
-        'papaparse': 'https://unpkg.com/papaparse@5.4.1/papaparse.min'
-      },
-      shim: {
-        'plotlyjs-finance': {
-          deps: ['plotly']
-        }
-      }
-    });
-    require(['plotly','plotlyjs-finance','papaparse'], function(Plotly, finance, Papa){
-      // Plotly, the plugin and PapaParse loaded
-    });
-  </script>
+  <!-- Plotly.js served locally -->
+  <script src="node_modules/plotly.js-dist-min/plotly.min.js"></script>
 </head>
 <body class="rr-mode">
   <div class="left-panel">
