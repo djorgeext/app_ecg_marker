@@ -639,11 +639,11 @@ input.addEventListener('change', function (ev) {
             const visibleSegs = (segmentsAll || []).filter(s => enabled.has(String(s.type)) && !(s.endIdx < startIndex || s.startIdx > endIndex));
             const colorForType = (t) => {
               switch (String(t)) {
-                case 'Arrhythmia': return { fill: 'rgba(16,185,129,0.10)', line: 'rgba(16,185,129,0.7)' }; // green
-                case 'Artifact':   return { fill: 'rgba(245,158,11,0.10)', line: 'rgba(180,83,9,0.7)' };  // amber
-                case 'Noise':      return { fill: 'rgba(107,114,128,0.12)', line: 'rgba(55,65,81,0.7)' }; // gray
-                case 'ST change':  return { fill: 'rgba(239,68,68,0.08)', line: 'rgba(153,27,27,0.7)' };  // red
-                default:           return { fill: 'rgba(139,92,246,0.10)', line: 'rgba(109,40,217,0.7)' }; // violet
+                case 'Arrhythmia': return { fill: 'rgba(16,185,129,0.25)', line: 'rgba(16,185,129,0.8)' }; // green
+                case 'Artifact':   return { fill: 'rgba(245,158,11,0.25)', line: 'rgba(180,83,9,0.8)' };  // amber
+                case 'Noise':      return { fill: 'rgba(107,114,128,0.30)', line: 'rgba(55,65,81,0.8)' }; // gray
+                case 'ST change':  return { fill: 'rgba(239,68,68,0.20)', line: 'rgba(153,27,27,0.8)' };  // red
+                default:           return { fill: 'rgba(139,92,246,0.25)', line: 'rgba(109,40,217,0.8)' }; // violet
               }
             };
             const segShapes = visibleSegs.map(s => {
@@ -736,6 +736,9 @@ input.addEventListener('change', function (ev) {
               aecgInfo.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`;
             }
           };
+
+          // Make renderWindow globally accessible for segment operations
+          window.renderWindow = renderWindow;
 
           // Export menu logic
           const hideMenu = () => { exportMenu && exportMenu.classList.add('hidden'); };
