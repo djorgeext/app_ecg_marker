@@ -40,11 +40,8 @@
     <!-- RR series chart (top) -->
     <div id="rrDiv" class="secondary-chart" aria-label="RR series chart"></div>
 
-    <!-- Secondary result chart for RR FFT (bottom) -->
-    <div id="fftDiv" class="secondary-chart" aria-label="RR FFT chart"></div>
-
-    <!-- Navigator: horizontal scrollbar with arrow buttons -->
-    <div class="navigator-container">
+    <!-- Navigator: horizontal scrollbar with arrow buttons (only for RR series) -->
+    <div class="navigator-container rr-navigator">
       <div class="scrollbar-container">
         <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">&lt;</button>
         <div id="scrollbar" class="scrollbar"><div id="scrollbarContent"></div></div>
@@ -52,6 +49,9 @@
       </div>
       <div id="navigatorInfo"></div>
     </div>
+
+    <!-- Secondary result chart for RR FFT (bottom) -->
+    <div id="fftDiv" class="secondary-chart" aria-label="RR FFT chart"></div>
   </div>
 
   <!-- Right panel: RR analysis controls -->

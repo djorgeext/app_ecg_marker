@@ -293,6 +293,21 @@ input[type="file"] {
 
 #navigatorInfo { font-size: 0.9rem; color: var(--muted); margin-top: 6px; }
 
+/* RR-specific navigator styling */
+.rr-navigator { 
+  margin-top: 0.5rem; 
+  margin-bottom: 0.75rem; 
+}
+
+body.rr-mode .rr-navigator { 
+  display: block; 
+}
+
+/* Hide navigator in RR mode at the bottom (if any remains) */
+body.rr-mode .navigator-container:not(.rr-navigator) { 
+  display: none; 
+}
+
 /* ========== Misc ========== */
 g.shapelayer path, g.shapelayer line { pointer-events: none; }
 
