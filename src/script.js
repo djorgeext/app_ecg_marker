@@ -91,12 +91,17 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
     // Calculate a meaningful scrollbar width based on container width
     const containerWidth = sb.clientWidth || 800; // fallback to reasonable default
     
-    // Make scrollbar content proportionally wider to ensure visible scrolling
-    // The multiplier ensures the scrollbar content is always larger than container
-    const minMultiplier = 1.5; // Minimum 1.5x container width for scrolling
-    const contentWidth = Math.max(ratio * containerWidth, containerWidth * minMultiplier);
+    // Improved width calculation for better scrollbar visibility
+    // Ensure the content is always significantly larger than container for proper scrolling
+    const minMultiplier = Math.max(2.0, ratio / 5); // Dynamic minimum based on data ratio
+    const contentWidth = Math.max(ratio * containerWidth * 0.8, containerWidth * minMultiplier);
     
-    sbContent.style.width = `${contentWidth}px`;
+    // Set minimum content width to ensure scrollbar is always functional
+    const finalWidth = Math.max(contentWidth, containerWidth * 1.5);
+    
+    sbContent.style.width = `${finalWidth}px`;
+    sbContent.style.height = '100%'; // Ensure full height coverage
+    
     rrSyncScrollToCurrent();
   };
   const wireNavigatorRR = () => {
@@ -115,6 +120,16 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
         rrUpdateInfo();
       });
     }
+    
+    // Add debouncing for keyboard navigation to improve performance
+    let keydownTimeout = null;
+    const debouncedApplyRange = () => {
+      clearTimeout(keydownTimeout);
+      keydownTimeout = setTimeout(() => {
+        rrApplyRange();
+      }, 50); // 50ms debounce delay
+    };
+    
     if (!window.__rrKeydownWired) {
       window.__rrKeydownWired = true;
       window.addEventListener('keydown', (e) => {
@@ -124,13 +139,25 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
           const step = e.shiftKey ? Math.max(1, Math.floor(st.window * 0.5)) : Math.max(1, Math.floor(st.window * 0.1));
           const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
           rrSetState({ start: Math.min(maxStart, Math.max(0, st.start + (e.key === 'ArrowLeft' ? -step : step))) });
-          rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+          rrSyncScrollToCurrent(); 
+          debouncedApplyRange(); // Use debounced version
+          rrUpdateInfo();
           e.preventDefault();
         }
       });
     }
     const stepSmall = () => { const st = rrState(); return Math.max(1, Math.floor((st.window || 100) * 0.1)); };
     const stepLarge = () => { const st = rrState(); return Math.max(1, Math.floor((st.window || 100) * 0.5)); };
+    
+    // Shared debounced apply range function for button clicks
+    let buttonTimeout = null;
+    const debouncedButtonApplyRange = () => {
+      clearTimeout(buttonTimeout);
+      buttonTimeout = setTimeout(() => {
+        rrApplyRange();
+      }, 30); // Shorter delay for direct button clicks
+    };
+    
     if (btnLeft && !btnLeft.__rrWired) {
       btnLeft.__rrWired = true;
       btnLeft.addEventListener('click', (e) => {
@@ -138,14 +165,14 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
         e.preventDefault();
         const st = rrState();
         rrSetState({ start: Math.max(0, st.start - stepSmall()) });
-        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+        rrSyncScrollToCurrent(); debouncedButtonApplyRange(); rrUpdateInfo();
       });
       btnLeft.addEventListener('contextmenu', (e) => {
         if (!(document.body && document.body.classList.contains('rr-mode'))) return;
         e.preventDefault();
         const st = rrState();
         rrSetState({ start: Math.max(0, st.start - stepLarge()) });
-        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+        rrSyncScrollToCurrent(); debouncedButtonApplyRange(); rrUpdateInfo();
       });
     }
     if (btnRight && !btnRight.__rrWired) {
@@ -156,7 +183,7 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
         const st = rrState();
         const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
         rrSetState({ start: Math.min(maxStart, st.start + stepSmall()) });
-        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+        rrSyncScrollToCurrent(); debouncedButtonApplyRange(); rrUpdateInfo();
       });
       btnRight.addEventListener('contextmenu', (e) => {
         if (!(document.body && document.body.classList.contains('rr-mode'))) return;
@@ -164,7 +191,7 @@ const getTrace = (parsedArr, column) => parsedArr.map(row => {
         const st = rrState();
         const maxStart = Math.max(0, (st.total || 0) - (st.window || 0));
         rrSetState({ start: Math.min(maxStart, st.start + stepLarge()) });
-        rrSyncScrollToCurrent(); rrApplyRange(); rrUpdateInfo();
+        rrSyncScrollToCurrent(); debouncedButtonApplyRange(); rrUpdateInfo();
       });
     }
   };
