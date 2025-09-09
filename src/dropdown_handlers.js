@@ -26,10 +26,14 @@ function initializeDropdowns() {
           // Collapse
           targetContent.classList.remove('expanded');
           this.classList.remove('active');
+          // Reset to CSS-controlled max-height for collapse animation
+          targetContent.style.maxHeight = '';
         } else {
           // Expand
           targetContent.classList.add('expanded');
           this.classList.add('active');
+          // Remove any inline max-height to allow CSS to control expansion
+          targetContent.style.maxHeight = '';
         }
       }
     });
@@ -38,9 +42,9 @@ function initializeDropdowns() {
   // Set initial state - start with all sections collapsed for cleaner UI
   document.querySelectorAll('.dropdown-content').forEach(content => {
     content.classList.remove('expanded');
-    // Also ensure max-height is 0 initially for proper animation
-    content.style.maxHeight = '0';
-    content.style.padding = '0 1rem';
+    // Remove inline styles to let CSS handle the state
+    content.style.maxHeight = '';
+    content.style.padding = '';
   });
   
   document.querySelectorAll('.dropdown-header').forEach(header => {
