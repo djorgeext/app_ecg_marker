@@ -53,7 +53,7 @@
       <script src="script.js"></script>
       <script src="dropdown_handlers.js"></script>
       
-      <div class="dropdown-section">
+      <div class="dropdown-section ecg-only">
         <button class="dropdown-header" type="button" data-target="fiducialDropdown">
           <span class="dropdown-title">Fiducial Points</span>
           <span class="dropdown-current" id="fiducialCurrent">R</span>
@@ -70,7 +70,7 @@
         </div>
       </div>
       
-      <div class="dropdown-section">
+      <div class="dropdown-section ecg-only">
         <button class="dropdown-header" type="button" data-target="eventsDropdown">
           <span class="dropdown-title">Events & Segments</span>
           <span class="dropdown-current" id="eventsCurrent">Arrhythmia</span>
@@ -103,7 +103,7 @@
         </div>
       </div>
       
-      <div class="dropdown-section">
+      <div class="dropdown-section ecg-only">
         <button class="dropdown-header" type="button" data-target="channelsDropdown">
           <span class="dropdown-title">Channels</span>
           <span class="dropdown-current" id="channelsCurrent">All</span>
@@ -119,15 +119,15 @@
         </div>
       </div>
       
-      <div id="countsLine" class="muted small block">0 marks | 0 segments</div>
-      <div class="block">
+      <div id="countsLine" class="muted small block ecg-only">0 marks | 0 segments</div>
+      <div class="block ecg-only">
         <button id="showSelected">Show</button>
       </div>
-      <div class="block">
+      <div class="block ecg-only">
         <button id="clearMarks">Clear Marks</button>
       </div>
       
-      <div class="block">
+      <div class="block ecg-only">
   <button id="rrAnalysis">RR Analysis</button>
       </div>
   <div class="block rr-only">
