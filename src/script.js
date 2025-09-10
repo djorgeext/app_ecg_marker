@@ -7,13 +7,7 @@
 
   const myPlot = document.getElementById('myDiv');
   const rightPanel = document.getElementById('channelPanel');
-  // Note: some right-panel elements are created after this script tag; look them up on demand
-  const exportBtn = document.getElementById('exportBtn');
-  const exportMenu = document.getElementById('exportMenu');
-  const aecgModal = document.getElementById('aecgModal');
-  const aecgCancel = document.getElementById('aecgCancel');
-  const aecgDownload = document.getElementById('aecgDownload');
-  const aecgInfo = document.getElementById('aecgInfo');
+  // Note: many right-panel elements are created after this script tag; we will wire them on DOMContentLoaded
   const sb = document.getElementById('scrollbar');
   const sbContent = document.getElementById('scrollbarContent');
   const btnLeft = document.getElementById('scrollLeft');
@@ -190,7 +184,7 @@
     layout.shapes = existingShapes.concat(segShapes, markShapes);
     layout.annotations = existingAnns.concat(markAnns);
     visibleMarks.forEach((m) => { const xval = fullX[m.idx]; const selIdx = getSelectedIndices(); selIdx.forEach((chIdx, i) => { const yaxisName = i === 0 ? 'y' : 'y' + (i+1); const yval = channels[chIdx] && channels[chIdx][m.idx] !== undefined ? channels[chIdx][m.idx] : null; if (yval == null) return; dataOut.push({ x:[xval], y:[yval], type:'scatter', mode:'markers', marker:{ color:'red', size:8 }, showlegend:false, hoverinfo:'skip', customdata:[m.idx], yaxis:yaxisName }); }); });
-  const reactResult = Plotly.react(myPlot, dataOut, layout, { displayModeBar:true, editable:true, edits:{ titleText:false, axisTitleText:false, annotationText:false, legendPosition:false, colorbarPosition:false, shapePosition:false } });
+  const reactResult = Plotly.react(myPlot, dataOut, layout, { displayModeBar:true, scrollZoom:true, editable:true, edits:{ titleText:false, axisTitleText:false, annotationText:false, legendPosition:false, colorbarPosition:false, shapePosition:false } });
     if (reactResult && typeof reactResult.then === 'function') {
       reactResult.then((gd) => {
         if (!plotEventsWired && gd && typeof gd.on === 'function') {
@@ -203,61 +197,114 @@
       plotEventsWired = true;
     }
     syncCounts();
-  if (aecgInfo && !aecgModal.classList.contains('hidden')) { const sr = inferSamplingRate(fullX); aecgInfo.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`; }
+  {
+    const modal = document.getElementById('aecgModal');
+    const info = document.getElementById('aecgInfo');
+    if (modal && info && !modal.classList.contains('hidden')) { const sr = inferSamplingRate(fullX); info.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`; }
+  }
   };
 
   window.renderWindow = renderWindow;
 
-  const hideMenu = () => { exportMenu && exportMenu.classList.add('hidden'); };
-  const toggleMenu = () => { exportMenu && exportMenu.classList.toggle('hidden'); };
-  exportBtn && exportBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
-  document.addEventListener('click', hideMenu);
-  exportMenu && exportMenu.addEventListener('click', (e) => { e.stopPropagation(); });
-
   const downloadText = (text, filename) => { const blob = new Blob([text], { type:'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
   const inferSamplingRate = (xs) => { if (!xs || xs.length < 3) return null; const dts = []; for (let i = 1; i < Math.min(xs.length, 4096); i++) { const d = Number(xs[i]) - Number(xs[i-1]); if (isFinite(d) && d > 0) dts.push(d); } if (!dts.length) return null; dts.sort((a,b)=>a-b); const med = dts[Math.floor(dts.length/2)]; return med > 0 ? Math.round(1/med) : null; };
 
-  exportMenu && exportMenu.querySelectorAll('button[data-exp="marks"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const typ = String(btn.dataset.type);
-      const list = marksAll.filter(m => m.type === typ).map(m => String(Number(fullX[m.idx]) || 0.0));
-      if (list.length === 0) { alert(`No ${typ} marks to export`); hideMenu(); return; }
-      downloadText(list.join('\n') + '\n', `${typ}_marks.txt`);
-      hideMenu();
-    });
-  });
+  function wireExportControls() {
+    const exportBtnEl = document.getElementById('exportBtn');
+    const exportMenuEl = document.getElementById('exportMenu');
+    const aecgModalEl = document.getElementById('aecgModal');
+    const aecgCancelEl = document.getElementById('aecgCancel');
+    const aecgDownloadEl = document.getElementById('aecgDownload');
+    const aecgBtnEl = document.getElementById('exportAecgBtn');
 
-  exportMenu && exportMenu.querySelectorAll('button[data-exp="segs"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const typ = String(btn.dataset.type);
-      const rows = segmentsAll.filter(s => String(s.type) === typ).map(s => { const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0; const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0; return `${x0}\t${x1}`; });
-      if (rows.length === 0) { alert(`No ${typ} segments to export`); hideMenu(); return; }
-      downloadText(rows.join('\n') + '\n', `${typ.replace(/\s+/g,'_')}_segments.txt`);
-      hideMenu();
-    });
-  });
+    const hideMenu = () => { const em = document.getElementById('exportMenu'); if (em) em.classList.add('hidden'); };
+    const toggleMenu = () => { const em = document.getElementById('exportMenu'); if (em) em.classList.toggle('hidden'); };
 
-  const openAecg = () => { if (!aecgModal) return; const sr = inferSamplingRate(fullX); if (aecgInfo) aecgInfo.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`; aecgModal.classList.remove('hidden'); };
-  const closeAecg = () => { aecgModal && aecgModal.classList.add('hidden'); };
-  const aecgBtn = document.getElementById('exportAecgBtn');
-  aecgBtn && aecgBtn.addEventListener('click', () => { hideMenu(); openAecg(); });
-  aecgCancel && aecgCancel.addEventListener('click', closeAecg);
-  aecgModal && aecgModal.addEventListener('click', (e) => { if (e.target === aecgModal) closeAecg(); });
-  aecgDownload && aecgDownload.addEventListener('click', () => {
-    const pid = (document.getElementById('aecgPid')?.value || '').trim();
-    const pname = (document.getElementById('aecgPname')?.value || '').trim();
-    const sex = (document.getElementById('aecgSex')?.value || 'U').trim();
-    const dob = (document.getElementById('aecgDob')?.value || '').trim();
-    const study = (document.getElementById('aecgStudyId')?.value || '').trim();
-    const device = (document.getElementById('aecgDevice')?.value || '').trim();
-    const sr = inferSamplingRate(fullX) || 0;
-    const xmlEscape = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
-    const marksXml = marksAll.map(m => `    <mark type="${xmlEscape(m.type)}" time="${xmlEscape(Number(fullX[m.idx])||0)}"/>`).join('\n');
-    const segsXml = segmentsAll.map(s => { const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0; const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0; return `    <segment type=\"${xmlEscape(s.type)}\" start=\"${xmlEscape(x0)}\" end=\"${xmlEscape(x1)}\"/>`; }).join('\n');
-    const body = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<aECG approximate=\"true\">\n  <patient id=\"${xmlEscape(pid)}\" name=\"${xmlEscape(pname)}\" sex=\"${xmlEscape(sex)}\" dob=\"${xmlEscape(dob)}\"/>\n  <study id=\"${xmlEscape(study)}\" device=\"${xmlEscape(device)}\" samplingRate=\"${xmlEscape(sr)}\" leads=\"${channels.length}\"/>\n  <marks>\n${marksXml}\n  </marks>\n  <segments>\n${segsXml}\n  </segments>\n</aECG>\n`;
-    downloadText(body, 'export_aecg.xml');
-    closeAecg();
-  });
+    if (exportBtnEl && !exportBtnEl.__wired) {
+      exportBtnEl.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+      exportBtnEl.__wired = true;
+    }
+    if (exportMenuEl && !exportMenuEl.__wired) {
+      exportMenuEl.addEventListener('click', (e) => { e.stopPropagation(); });
+      exportMenuEl.__wired = true;
+    }
+    if (!document.__exportHideWired) {
+      document.addEventListener('click', hideMenu);
+      document.__exportHideWired = true;
+    }
+
+    if (exportMenuEl && !exportMenuEl.__itemsWired) {
+      exportMenuEl.querySelectorAll('button[data-exp="marks"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const typ = String(btn.dataset.type);
+          const list = marksAll.filter(m => m.type === typ).map(m => String(Number(fullX[m.idx]) || 0.0));
+          if (list.length === 0) { alert(`No ${typ} marks to export`); hideMenu(); return; }
+          downloadText(list.join('\n') + '\n', `${typ}_marks.txt`);
+          hideMenu();
+        });
+      });
+      exportMenuEl.querySelectorAll('button[data-exp="segs"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const typ = String(btn.dataset.type);
+          const rows = segmentsAll.filter(s => String(s.type) === typ).map(s => {
+            const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0;
+            const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0;
+            return `${x0}\t${x1}`;
+          });
+          if (rows.length === 0) { alert(`No ${typ} segments to export`); hideMenu(); return; }
+          downloadText(rows.join('\n') + '\n', `${typ.replace(/\s+/g,'_')}_segments.txt`);
+          hideMenu();
+        });
+      });
+      exportMenuEl.__itemsWired = true;
+    }
+
+    const openAecg = () => {
+      const modal = document.getElementById('aecgModal');
+      const info = document.getElementById('aecgInfo');
+      if (!modal) return;
+      const sr = inferSamplingRate(fullX);
+      if (info) info.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`;
+      modal.classList.remove('hidden');
+    };
+    const closeAecg = () => { const modal = document.getElementById('aecgModal'); if (modal) modal.classList.add('hidden'); };
+
+    if (aecgBtnEl && !aecgBtnEl.__wired) {
+      aecgBtnEl.addEventListener('click', () => { hideMenu(); openAecg(); });
+      aecgBtnEl.__wired = true;
+    }
+    if (aecgCancelEl && !aecgCancelEl.__wired) {
+      aecgCancelEl.addEventListener('click', closeAecg);
+      aecgCancelEl.__wired = true;
+    }
+    if (aecgModalEl && !aecgModalEl.__wired) {
+      aecgModalEl.addEventListener('click', (e) => { if (e.target === aecgModalEl) closeAecg(); });
+      aecgModalEl.__wired = true;
+    }
+    if (aecgDownloadEl && !aecgDownloadEl.__wired) {
+      aecgDownloadEl.addEventListener('click', () => {
+        const pid = (document.getElementById('aecgPid')?.value || '').trim();
+        const pname = (document.getElementById('aecgPname')?.value || '').trim();
+        const sex = (document.getElementById('aecgSex')?.value || 'U').trim();
+        const dob = (document.getElementById('aecgDob')?.value || '').trim();
+        const study = (document.getElementById('aecgStudyId')?.value || '').trim();
+        const device = (document.getElementById('aecgDevice')?.value || '').trim();
+        const sr = inferSamplingRate(fullX) || 0;
+        const xmlEscape = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+        const marksXml = marksAll.map(m => `    <mark type=\"${xmlEscape(m.type)}\" time=\"${xmlEscape(Number(fullX[m.idx])||0)}\"/>`).join('\n');
+        const segsXml = segmentsAll.map(s => {
+          const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0;
+          const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0;
+          return `    <segment type=\"${xmlEscape(s.type)}\" start=\"${xmlEscape(x0)}\" end=\"${xmlEscape(x1)}\"/>`;
+        }).join('\n');
+        const body = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<aECG approximate=\"true\">\n  <patient id=\"${xmlEscape(pid)}\" name=\"${xmlEscape(pname)}\" sex=\"${xmlEscape(sex)}\" dob=\"${xmlEscape(dob)}\"/>\n  <study id=\"${xmlEscape(study)}\" device=\"${xmlEscape(device)}\" samplingRate=\"${xmlEscape(sr)}\" leads=\"${channels.length}\"/>\n  <marks>\n${marksXml}\n  </marks>\n  <segments>\n${segsXml}\n  </segments>\n</aECG>\n`;
+        downloadText(body, 'export_aecg.xml');
+        closeAecg();
+      });
+      aecgDownloadEl.__wired = true;
+    }
+  }
+  document.addEventListener('DOMContentLoaded', wireExportControls);
 
   const setScrollbar = () => { if (!sb || !sbContent) return; const ratio = fullX.length > 0 ? (fullX.length / Math.max(windowSize, 1)) : 1; sbContent.style.width = `${Math.max(ratio * 100, 500)}px`; syncScrollToCurrent(); };
   const syncScrollToCurrent = () => { if (!sb || !sbContent) return; const maxScroll = sbContent.scrollWidth - sb.clientWidth; const maxStart = Math.max(0, fullX.length - windowSize); const pos = maxStart > 0 ? (currentStart / maxStart) * maxScroll : 0; sb.scrollLeft = isFinite(pos) ? pos : 0; };
@@ -313,7 +360,13 @@
       const startIndex = Math.max(0, findIndex(fullX, left));
       let endIndex = Math.min(fullX.length, findIndex(fullX, right) + 1);
       if (endIndex <= startIndex) endIndex = Math.min(fullX.length, startIndex + windowSize);
-      windowSize = endIndex - startIndex; const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.min(Math.max(0, startIndex), maxStart); setScrollbar(); if (navInfo) navInfo.innerText = `Window: ${startIndex} - ${endIndex} / ${fullX.length} (${windowSize} pts)`; renderWindow(startIndex, endIndex);
+      windowSize = endIndex - startIndex;
+      const maxStart = Math.max(0, fullX.length - windowSize);
+      currentStart = Math.min(Math.max(0, startIndex), maxStart);
+      setScrollbar();
+      const navInfoEl = document.getElementById('navigatorInfo');
+      if (navInfoEl) navInfoEl.innerText = `Window: ${startIndex} - ${endIndex} / ${fullX.length} (${windowSize} pts)`;
+      renderWindow(startIndex, endIndex);
     });
 
     plot.on('plotly_relayout', function(eventdata){
