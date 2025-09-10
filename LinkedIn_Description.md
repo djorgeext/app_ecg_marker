@@ -7,18 +7,17 @@
 Desarrollé una aplicación web completa para el análisis profesional de señales de electrocardiograma (ECG), dirigida a cardiólogos, investigadores médicos y profesionales de la salud. La herramienta permite la visualización interactiva, anotación precisa y análisis avanzado de datos cardíacos.
 
 💻 **Stack Tecnológico:**
+**Stack Tecnológico:**
 - **Frontend**: HTML5, CSS3, JavaScript ES6+ con Plotly.js para visualización de datos médicos
-- **Backend**: Python con FastAPI para APIs REST de alto rendimiento
-- **Análisis de Señales**: NumPy para procesamiento matemático y análisis FFT de intervalos RR
-- **Arquitectura**: Microservicios dockerizados con nginx y uvicorn
+- **Backend**: Python con FastAPI (salud/estado y utilidades)
+- **Arquitectura**: Docker con nginx sirviendo frontend estático
 - **Formatos Médicos**: Soporte para archivos .vak, .txt, .csv y exportación HL7 aECG
 
 🏥 **Funcionalidades Clave:**
 ✅ Visualización multicanal de señales ECG con navegación fluida
 ✅ Marcación precisa de puntos fiduciales (ondas P, Q, R, S, T)
 ✅ Anotación de eventos cardíacos (arritmias, artefactos, cambios ST)
-✅ Análisis de variabilidad de frecuencia cardíaca (RR intervals)
-✅ Análisis espectral mediante transformada rápida de Fourier (FFT)
+✅ Exportación y gestión de anotaciones y segmentos
 ✅ Exportación a estándares médicos internacionales (HL7 aECG)
 
 🎯 **Impacto:**

@@ -27,7 +27,7 @@ EXPOSE 80
 # Copy static site to nginx web root
 COPY src/ /var/www/html/
 
-# Configure nginx to serve index.html from /var/www/html
+# Configure nginx to serve index.html from /var/www/html (static only; no backend proxy)
 RUN rm -f /etc/nginx/sites-enabled/default \
     && mkdir -p /etc/nginx/conf.d \
     && printf '%s\n' \
@@ -37,24 +37,15 @@ RUN rm -f /etc/nginx/sites-enabled/default \
        '  autoindex on;' \
        '  server_name _;' \
        '  root /var/www/html;' \
-       '  index index.html;' \
-    '  # Proxy API calls to the backend service in the same Docker network' \
-    '  location /api/ {' \
-    '    proxy_pass http://backend:8000;' \
-    '    proxy_http_version 1.1;' \
-    '    proxy_set_header Upgrade $http_upgrade;' \
-    '    proxy_set_header Connection upgrade;' \
-    '    proxy_set_header Host $host;' \
-    '    proxy_cache_bypass $http_upgrade;' \
-    '  }' \
-       '  location / {' \
+    '  index index.html;' \
+    '  location / {' \
        '    try_files $uri $uri/ =404;' \
        '  }' \
        '  location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico)$ {' \
        '    expires 7d;' \
        '    add_header Cache-Control "public, max-age=604800";' \
        '  }' \
-       '}' \
+    '}' \
        > /etc/nginx/conf.d/app.conf
 
 # Start nginx in the foreground

@@ -3,56 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RR Analysis - ECG Marker</title>
-    <link rel="stylesheet" href="styles.css">
-  <!-- Plotly.js served locally -->
-  <script src="node_modules/plotly.js-dist-min/plotly.min.js"></script>
-</head>
-<body class="rr-mode">
-  <div class="left-panel">
-    <!-- RR tools: visible when there are no marks from ECG analysis -->
-    <div id="rrTools" class="rr-tools" aria-label="RR tools">
-      <div class="rr-tools-row">
-        <span class="muted small">No R marks found. Load an RR series to analyze:</span>
-        <button id="loadRRBtn" type="button" style="width:auto; margin-left: 8px;">Load RR serie</button>
-        <input id="rrFileInput" type="file" accept=".txt,.csv" />
-      </div>
-    </div>
-
-    <!-- RR series chart (top) -->
-    <div id="rrDiv" class="secondary-chart" aria-label="RR series chart"></div>
-
-    <!-- Navigator: horizontal scrollbar with arrow buttons (only for RR series) -->
-    <div class="navigator-container rr-navigator">
-      <div class="scrollbar-container">
-        <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">&lt;</button>
-        <div id="scrollbar" class="scrollbar"><div id="scrollbarContent"></div></div>
-        <button id="scrollRight" class="scroll-btn" aria-label="Scroll right" title="Right">&gt;</button>
-      </div>
-      <div id="navigatorInfo"></div>
-    </div>
-
-    <!-- Secondary result chart for RR FFT (bottom) -->
-    <div id="fftDiv" class="secondary-chart" aria-label="RR FFT chart"></div>
-  </div>
-
-  <!-- Right panel: RR analysis controls -->
-  <div class="right-panel">
-    <aside id="channelPanel">
-      <div class="block">
-        <button id="backToEcg" title="Return to ECG analysis">ECG</button>
-      </div>
-      
-      <div class="block">
-        <button id="computeRRFFTNow">FFT</button>
-      </div>
-      
-      <div class="hint small muted block">Navigate with arrows or scroll to explore RR series</div>
-    </aside>
-  </div>
-
-  <!-- Scripts for RR analysis functionality -->
-  <script src="script.js"></script>
-  <script src="rr_script.js"></script>
+  <title>RR Analysis Removed</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 2rem; color: #111; }
+    a { color: #2563eb; text-decoration: none; }
+  </style>
+  <meta http-equiv="refresh" content="3; url=index.html">
+  <script>console.warn('RR analysis page was removed. Redirecting to ECG.');</script>
+  </head>
+<body>
+  <h2>RR analysis was removed from this application.</h2>
+  <p>You will be redirected to the ECG page. If not, <a href="index.html">click here</a>.</p>
 </body>
 </html>

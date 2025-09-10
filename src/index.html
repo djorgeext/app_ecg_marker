@@ -16,22 +16,9 @@
   <div class="left-panel">
   <div id="myDiv"><!-- Plotly chart --></div>
 
-  <!-- RR tools: visible only in RR view when there are no marks -->
-  <div id="rrTools" class="rr-tools" style="display:none" aria-label="RR tools">
-    <div class="rr-tools-row">
-      <span class="muted small">No R marks found. Load an RR series to analyze:</span>
-      <button id="loadRRBtn" type="button" style="width:auto; margin-left: 8px;">Load RR series (txt)</button>
-      <input id="rrFileInput" type="file" accept=".txt,.csv" />
-    </div>
-  </div>
+  <!-- RR elements removed -->
 
-  <!-- RR series chart (top) shown in RR view -->
-  <div id="rrDiv" class="secondary-chart" aria-label="RR series chart"></div>
-
-  <!-- Secondary result chart for RR FFT (bottom) -->
-  <div id="fftDiv" class="secondary-chart" aria-label="RR FFT chart"></div>
-
-    <!-- Navigator: horizontal scrollbar with arrow buttons -->
+  <!-- Navigator: horizontal scrollbar with arrow buttons (ECG mode) -->
     <div class="navigator-container">
       <div class="scrollbar-container">
   <button id="scrollLeft" class="scroll-btn" aria-label="Scroll left" title="Left">&lt;</button>
@@ -53,7 +40,7 @@
       <script src="script.js"></script>
       <script src="dropdown_handlers.js"></script>
       
-      <div class="dropdown-section ecg-only">
+  <div class="dropdown-section">
         <button class="dropdown-header" type="button" data-target="fiducialDropdown">
           <span class="dropdown-title">Fiducial Points</span>
           <span class="dropdown-current" id="fiducialCurrent">R</span>
@@ -70,7 +57,7 @@
         </div>
       </div>
       
-      <div class="dropdown-section ecg-only">
+  <div class="dropdown-section">
         <button class="dropdown-header" type="button" data-target="eventsDropdown">
           <span class="dropdown-title">Events & Segments</span>
           <span class="dropdown-current" id="eventsCurrent">Arrhythmia</span>
@@ -103,7 +90,7 @@
         </div>
       </div>
       
-      <div class="dropdown-section ecg-only">
+  <div class="dropdown-section">
         <button class="dropdown-header" type="button" data-target="channelsDropdown">
           <span class="dropdown-title">Channels</span>
           <span class="dropdown-current" id="channelsCurrent">All</span>
@@ -119,27 +106,14 @@
         </div>
       </div>
       
-      <div id="countsLine" class="muted small block ecg-only">0 marks | 0 segments</div>
-      <div class="block ecg-only">
+    <div id="countsLine" class="muted small block">0 marks | 0 segments</div>
+    <div class="block">
         <button id="showSelected">Show</button>
       </div>
-      <div class="block ecg-only">
+    <div class="block">
         <button id="clearMarks">Clear Marks</button>
       </div>
-      
-      <div class="block ecg-only">
-  <button id="rrAnalysis">RR Analysis</button>
-      </div>
-  <div class="block rr-only">
-        <button id="loadRRBtnSide">Load RR series (txt)</button>
-      </div>
-  <div class="block rr-only">
-        <button id="computeRRFFTNow">FFT</button>
-      </div>
-  <div class="block rr-only">
-        <button id="backToEcg" title="Return to ECG channels view">Back to ECG</button>
-      </div>
-  <div class="block export-wrap ecg-only">
+  <div class="block export-wrap">
   <button id="exportBtn">Export &#9660;</button>
         <ul id="exportMenu" class="export-menu hidden">
           <li class="hdr">Marks</li>

@@ -180,30 +180,6 @@ body {
   margin-bottom: 0.75rem; /* separación visual del navegador */
 }
 
-/* Secondary charts (RR and RR FFT) */
-.secondary-chart {
-  width: 100%;
-  flex: 0 0 auto;
-  min-height: 200px;
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  margin-bottom: 0.75rem;
-  display: none; /* hidden until RR view is requested */
-}
-
-/* RR tools banner shown when no marks are present */
-.rr-tools {
-  width: 100%;
-  background: #fff7ed; /* warm light orange */
-  border: 1px dashed #fdba74;
-  border-radius: var(--radius);
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.5rem;
-}
-.rr-tools .rr-tools-row { display: flex; align-items: center; gap: 8px; }
-.rr-tools input[type="file"] { display: none; }
 
 /* ========== Right Panel (Card) ========== */
 #channelPanel {
@@ -221,11 +197,7 @@ body {
 .right-panel { width: var(--panel-w); }
 .left-panel { min-width: 0; }
 
-/* Toggle visibility between ECG and RR modes */
-.ecg-only { display: block; }
-.rr-only { display: none; }
-body.rr-mode .ecg-only { display: none; }
-body.rr-mode .rr-only { display: block; }
+/* Mode toggles removed (RR mode eliminated) */
 
 /* ========== Blocks & Typography ========== */
 .block { margin-top: 0.75rem; }
@@ -285,63 +257,15 @@ input[type="file"] {
 .scrollbar-container { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; }
 .scroll-btn { padding: 0.4rem 0.6rem; border: 1px solid var(--border); background: #fff; border-radius: 999px; cursor: pointer; }
 .scroll-btn:hover { background: #f3f4f6; }
-.scrollbar { 
-  position: relative; 
-  height: 1rem; /* Increased from 0.5rem for better visibility */
-  background: #e5e7eb; 
-  border-radius: 0.5rem; 
-  overflow-x: auto; 
-  overflow-y: hidden; 
-  border: 1px solid #d1d5db; /* Added border for better definition */
-}
-
-/* Enhanced webkit scrollbar styling for better visibility */
-.scrollbar::-webkit-scrollbar { 
-  height: 1rem; 
-}
-.scrollbar::-webkit-scrollbar-track { 
-  background: #f3f4f6; 
-  border-radius: 0.5rem; 
-}
-.scrollbar::-webkit-scrollbar-thumb { 
-  background: var(--accent); 
-  border-radius: 0.5rem; 
-  border: 2px solid #f3f4f6; /* Add border to make thumb more visible */
-  min-width: 20px; /* Ensure minimum thumb width */
-}
-.scrollbar::-webkit-scrollbar-thumb:hover { 
-  background: #1d4ed8; /* Darker blue on hover */
-}
-
-/* Fallback for non-webkit browsers */
-.scrollbar {
-  scrollbar-width: auto; /* Firefox */
-  scrollbar-color: var(--accent) #f3f4f6; /* Firefox: thumb track */
-}
-
-.scrollbarContent, #scrollbarContent { 
-  width: 100%; 
-  height: 100%; 
-  /* Add a minimal background to ensure the content area is recognized */
-  background: transparent;
-}
+.scrollbar { position: relative; height: 0.5rem; background: #e5e7eb; border-radius: 999px; overflow-x: auto; overflow-y: hidden; }
+.scrollbar::-webkit-scrollbar { height: 0.5rem; }
+.scrollbar::-webkit-scrollbar-track { background: transparent; }
+.scrollbar::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 999px; }
+.scrollbarContent, #scrollbarContent { width: 100%; height: 100%; }
 
 #navigatorInfo { font-size: 0.9rem; color: var(--muted); margin-top: 6px; }
 
-/* RR-specific navigator styling */
-.rr-navigator { 
-  margin-top: 0.5rem; 
-  margin-bottom: 0.75rem; 
-}
-
-body.rr-mode .rr-navigator { 
-  display: block; 
-}
-
-/* Hide navigator in RR mode at the bottom (if any remains) */
-body.rr-mode .navigator-container:not(.rr-navigator) { 
-  display: none; 
-}
+/* RR navigator styles removed */
 
 /* ========== Misc ========== */
 g.shapelayer path, g.shapelayer line { pointer-events: none; }
