@@ -80,6 +80,7 @@
   segFilterCbs.forEach(cb => cb.addEventListener('change', () => { const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); }));
 
   const findIndex = (arr, val) => { let lo = 0, hi = arr.length - 1; while (lo < hi) { const mid = Math.floor((lo + hi) / 2); if (arr[mid] < val) lo = mid + 1; else hi = mid; } return lo; };
+  window._binaryFindIndex = findIndex; // expose for potential debugging
   const decimate = (xs, ys, maxPoints) => { const n = xs.length; if (n <= maxPoints) return { x: xs, y: ys }; const step = Math.ceil(n / maxPoints); const nx = [], ny = []; for (let i = 0; i < n; i += step) { nx.push(xs[i]); ny.push(ys[i]); } return { x: nx, y: ny }; };
 
   const buildChannelCheckboxes = () => {
@@ -329,7 +330,7 @@
           }
           matrix[i] = row;
         }
-        if (statusOutput) statusOutput.innerText = 'Sending ECG to backend…';
+  if (statusOutput) statusOutput.innerText = 'Analyzing';
         const resp = await fetch(`${API_BASE}/api/set_ecg`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -340,12 +341,43 @@
           throw new Error(`Backend error (${resp.status}): ${msg}`);
         }
         const json = await resp.json();
-        // Only print r_peaks results in the console as requested
-        if (Array.isArray(json.r_peaks)) {
-          console.log('r_peaks:', json.r_peaks);
-        } else {
-          console.log('r_peaks:', json && json.r_peaks);
+  // (Logging removed per request)
+
+        // -------- Auto-mark fiducial points (R, P, T) on the plot ----------
+        // Heurística: si los valores caben dentro del rango de índices -> tratar como índices.
+        // Si no, interpretarlos como tiempos y convertir a índice usando búsqueda binaria (findIndex).
+        const treatAsIndex = (arr) => Array.isArray(arr) && arr.length > 0 && Math.max(...arr) < fullX.length;
+        const pushMarks = (arr, label) => {
+          if (!Array.isArray(arr)) return;
+            const isIndex = treatAsIndex(arr);
+            for (const v of arr) {
+              if (v == null || !isFinite(v)) continue;
+              let idx = -1;
+              if (isIndex) {
+                idx = Math.max(0, Math.min(fullX.length - 1, Math.round(v)));
+              } else {
+                // Interpretar como tiempo
+                idx = findIndex(fullX, v);
+              }
+              if (idx < 0 || idx >= fullX.length) continue;
+              marksAll.push({ idx, type: label });
+            }
+        };
+        pushMarks(json.r_peaks, 'R');
+        pushMarks(json.P_points, 'P');
+        pushMarks(json.T_points, 'T');
+        // Deduplicar manteniendo la última marca por índice y tipo preferentemente la última añadida
+        const dedupMap = new Map();
+        for (let i = 0; i < marksAll.length; i++) {
+          const m = marksAll[i];
+          dedupMap.set(`${m.idx}|${m.type}`, m);
         }
+        const newList = Array.from(dedupMap.values()).sort((a,b) => a.idx - b.idx || a.type.localeCompare(b.type));
+        marksAll.length = 0; newList.forEach(m => marksAll.push(m));
+        // Re-render ventana actual
+        const start = Number(currentStart || 0);
+        const end = Math.min(fullX.length, start + windowSize);
+        renderWindow(start, end);
         if (statusOutput) statusOutput.innerText = '';
       } catch (err) {
         console.error('Automatic Delineation error:', err);
