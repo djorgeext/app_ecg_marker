@@ -21,12 +21,27 @@ app.add_middleware(
 def health():
     return {"status": "ok"}
 
-def normalize(signal):
-    return (signal - np.min(signal)) / (np.max(signal) - np.min(signal))
+def normalize(signal: np.ndarray) -> np.ndarray:
+    """Normalize signal to [0,1] handling NaNs gracefully."""
+    s = np.asarray(signal, dtype=float)
+    if s.size == 0:
+        return s
+    # Use nan-aware min/max to avoid propagating NaNs
+    s_min = np.nanmin(s)
+    s_max = np.nanmax(s)
+    denom = (s_max - s_min)
+    if not np.isfinite(denom) or denom == 0:
+        # Flat or invalid; return zeros
+        return np.nan_to_num(s - s_min)
+    return np.nan_to_num((s - s_min) / denom)
 
 # Find R-peaks in the ECG signal
-def find_r_peaks(ecg_signal, fs=300):
-    ecg_channel = normalize(ecg_signal[:, 1]).astype(float)
+def find_r_peaks(ecg_signal: np.ndarray, fs: int = 300):
+    """Find R-peaks using Engzee detector on channel 1 with a fixed fs=300 Hz.
+
+    Returns indices (sample positions) of detected R-peaks.
+    """
+    ecg_channel = normalize(ecg_signal[:, 2]).astype(float)
     detectors = Detectors(fs)
     return detectors.engzee_detector(ecg_channel)
 
@@ -47,12 +62,13 @@ def set_ecg(payload: ECGMatrixPayload):
     # Ensure every row has exactly 13 entries
     try:
         ecg_signal = np.array([[np.nan if v is None else float(v) for v in row] for row in payload.matrix], dtype=float)
-        r_peaks = find_r_peaks(ecg_signal) + ecg_signal[0, 0]
+        # Detect R-peaks (indices) with fixed fs=300; do not infer sampling rate.
+        r_peaks = find_r_peaks(ecg_signal, fs=300)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid matrix values: {e}")
     if ecg_signal.ndim != 2 or ecg_signal.shape[1] != 13:
         raise HTTPException(status_code=400, detail=f"Matrix must be 2D with 13 columns, got shape {ecg_signal.shape}")
-    return {"status": "ok", "shape": list(ecg_signal.shape)}
+    return {"status": "ok", "shape": list(ecg_signal.shape), "r_peaks": list(map(int, r_peaks))}
 
 @app.get("/api/get_ecg_shape")
 def get_ecg_shape():

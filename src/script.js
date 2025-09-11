@@ -340,8 +340,13 @@
           throw new Error(`Backend error (${resp.status}): ${msg}`);
         }
         const json = await resp.json();
-        if (statusOutput) statusOutput.innerText = `ECG uploaded: shape ${json.shape ? json.shape.join('x') : ''}`;
-        alert('ECG enviado al backend.');
+        // Only print r_peaks results in the console as requested
+        if (Array.isArray(json.r_peaks)) {
+          console.log('r_peaks:', json.r_peaks);
+        } else {
+          console.log('r_peaks:', json && json.r_peaks);
+        }
+        if (statusOutput) statusOutput.innerText = '';
       } catch (err) {
         console.error('Automatic Delineation error:', err);
         alert('No se pudo enviar el ECG al backend. Revisa la consola.');
