@@ -14,6 +14,7 @@
   const btnRight = document.getElementById('scrollRight');
 
   // Will be looked up when needed
+  const API_BASE = (window.API_BASE || 'http://localhost:8000');
 
   const eventModeCb = document.getElementById('eventMode');
   const eventTypeSel = document.getElementById('eventType');
@@ -305,6 +306,51 @@
     }
   }
   document.addEventListener('DOMContentLoaded', wireExportControls);
+
+  // Wire Automatic Delineation: send time + 12 channels to backend as a 13-column matrix
+  function wireAutomaticDelineation() {
+    const btn = document.getElementById('automaticDelineation');
+    if (!btn || btn.__wired) return;
+    btn.addEventListener('click', async () => {
+      try {
+        if (!fullX || !channels || fullX.length === 0 || channels.length !== 12) {
+          alert('Load an ECG first (time + 12 channels).');
+          return;
+        }
+        const n = fullX.length;
+        // Build matrix: [time, ch1..ch12]
+        const matrix = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const row = new Array(13);
+          row[0] = (fullX[i] == null || !isFinite(Number(fullX[i]))) ? null : Number(fullX[i]);
+          for (let c = 0; c < 12; c++) {
+            const v = channels[c] ? channels[c][i] : null;
+            row[c+1] = (v == null || !isFinite(Number(v))) ? null : Number(v);
+          }
+          matrix[i] = row;
+        }
+        if (statusOutput) statusOutput.innerText = 'Sending ECG to backend…';
+        const resp = await fetch(`${API_BASE}/api/set_ecg`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matrix })
+        });
+        if (!resp.ok) {
+          const msg = await resp.text();
+          throw new Error(`Backend error (${resp.status}): ${msg}`);
+        }
+        const json = await resp.json();
+        if (statusOutput) statusOutput.innerText = `ECG uploaded: shape ${json.shape ? json.shape.join('x') : ''}`;
+        alert('ECG enviado al backend.');
+      } catch (err) {
+        console.error('Automatic Delineation error:', err);
+        alert('No se pudo enviar el ECG al backend. Revisa la consola.');
+        if (statusOutput) statusOutput.innerText = 'Error sending ECG to backend';
+      }
+    });
+    btn.__wired = true;
+  }
+  document.addEventListener('DOMContentLoaded', wireAutomaticDelineation);
 
   const setScrollbar = () => { if (!sb || !sbContent) return; const ratio = fullX.length > 0 ? (fullX.length / Math.max(windowSize, 1)) : 1; sbContent.style.width = `${Math.max(ratio * 100, 500)}px`; syncScrollToCurrent(); };
   const syncScrollToCurrent = () => { if (!sb || !sbContent) return; const maxScroll = sbContent.scrollWidth - sb.clientWidth; const maxStart = Math.max(0, fullX.length - windowSize); const pos = maxStart > 0 ? (currentStart / maxStart) * maxScroll : 0; sb.scrollLeft = isFinite(pos) ? pos : 0; };

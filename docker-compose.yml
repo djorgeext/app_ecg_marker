@@ -13,6 +13,16 @@ services:
     # If you prefer nginx to wait until backend is ready, you could add a simple healthcheck on backend and condition here
     # condition: service_healthy
 
+  backend:
+    container_name: ecg_marker_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    security_opt:
+      - apparmor=unconfined
+
 networks:
   default:
     name: ecg_marker_net
