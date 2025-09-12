@@ -1,5 +1,8 @@
 // ECG-only script: load file, plot 12 leads, mark P/Q/R/S/T, shade segments, navigate, and export.
 (function(){
+  // Expose internal state bridge for modules
+  // Filled later once variables are declared
+  let __bridgeInit = null;
   // Utility helpers
   const clamp = (v,min,max)=> v<min?min:(v>max?max:v);
   const median = (arr)=>{ if(!arr||!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; };
@@ -84,6 +87,18 @@
   let windowSize = 1000;
   const maxRender = 5000;
   let currentStart = 0;
+  if (!__bridgeInit) {
+    window.__state = {
+      get fullX(){ return fullX; }, set fullX(v){ fullX = Array.isArray(v)?v:[]; },
+      get channels(){ return channels; }, set channels(v){ channels = Array.isArray(v)?v:[]; },
+      get windowSize(){ return windowSize; }, set windowSize(v){ windowSize = Number(v)||windowSize; },
+      get maxRender(){ return maxRender; },
+      get currentStart(){ return currentStart; }, set currentStart(v){ currentStart = Number(v)||0; },
+      get marks(){ return marksAll; }, get segments(){ return segmentsAll; },
+      get plot(){ return myPlot; },
+    };
+    __bridgeInit = true;
+  }
 
   const getTrace = (parsedArr, column) => parsedArr.map(row => {
     const raw = row[column] !== undefined ? row[column].trim() : '';
@@ -807,4 +822,8 @@
       lateClearBtn.__wired = true;
     }
   });
+  // Export scheduleRender if present (defined earlier in this file)
+  if (typeof scheduleRender === 'function') {
+    window.scheduleRender = scheduleRender;
+  }
 })();
