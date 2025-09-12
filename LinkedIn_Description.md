@@ -1,5 +1,3 @@
-# ECG Marker - Descripción para LinkedIn
-
 **Aplicación Web de Análisis y Marcación de Electrocardiogramas**
 
 🔬 **Descripción del Proyecto:**
@@ -24,6 +22,3 @@ Desarrollé una aplicación web completa para el análisis profesional de señal
 Esta herramienta optimiza el flujo de trabajo clínico, mejorando la precisión diagnóstica y reduciendo el tiempo de análisis de ECGs. Facilita la investigación cardiovascular y el entrenamiento médico mediante interfaces intuitivas y análisis automatizados.
 
 #DesarrolloWeb #Python #JavaScript #SaludDigital #Cardiología #FastAPI #Plotly #AnálisisDeDatos #TecnologíaMédica #FullStack
-
----
-**Caracteres utilizados: 1,847 / 2,000**

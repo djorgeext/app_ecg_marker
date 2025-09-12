@@ -23,12 +23,53 @@
   // Will be looked up when needed
   const API_BASE = (window.API_BASE || 'http://localhost:8000');
 
-  const eventModeCb = document.getElementById('eventMode');
-  const eventTypeSel = document.getElementById('eventType');
-  const deleteSegBtn = document.getElementById('deleteSegBtn');
-  const segFilterCbs = Array.from(document.querySelectorAll('.seg-filter'));
-  const segFilterAllBtn = document.getElementById('segFilterAll');
-  const segFilterNoneBtn = document.getElementById('segFilterNone');
+  // Segment / events controls – wired after DOM ready
+  let eventModeCb = null;
+  let eventTypeSel = null;
+  let deleteSegBtn = null;
+  let segFilterAllBtn = null;
+  let segFilterNoneBtn = null;
+  const getSegFilterCbs = () => Array.from(document.querySelectorAll('.seg-filter'));
+  function wireSegmentControlsOnce(){
+    if (eventModeCb && eventModeCb.__wiredSegment) return;
+    eventModeCb = document.getElementById('eventMode');
+    eventTypeSel = document.getElementById('eventType');
+    deleteSegBtn = document.getElementById('deleteSegBtn');
+    segFilterAllBtn = document.getElementById('segFilterAll');
+    segFilterNoneBtn = document.getElementById('segFilterNone');
+    if (!eventModeCb) return; // elements not yet present
+    eventModeCb.addEventListener('change', () => {
+      pendingSegStartIdx = null;
+      if (eventModeCb.checked && deleteSegMode) { deleteSegMode = false; deleteSegBtn && deleteSegBtn.classList.remove('active'); }
+      statusOutput && (statusOutput.innerText = eventModeCb.checked ? 'Event mode: click start and end' : '');
+    });
+    if (deleteSegBtn && !deleteSegBtn.__wired) {
+      deleteSegBtn.addEventListener('click', () => {
+        deleteSegMode = !deleteSegMode;
+        if (deleteSegMode && eventModeCb && eventModeCb.checked) { eventModeCb.checked = false; pendingSegStartIdx = null; }
+        deleteSegBtn.classList.toggle('active', deleteSegMode);
+        statusOutput && (statusOutput.innerText = deleteSegMode ? 'Delete mode: click shaded segment to remove' : '');
+      });
+      deleteSegBtn.__wired = true;
+    }
+    if (segFilterAllBtn && !segFilterAllBtn.__wired) {
+      segFilterAllBtn.addEventListener('click', () => { getSegFilterCbs().forEach(cb => cb.checked = true); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
+      segFilterAllBtn.__wired = true;
+    }
+    if (segFilterNoneBtn && !segFilterNoneBtn.__wired) {
+      segFilterNoneBtn.addEventListener('click', () => { getSegFilterCbs().forEach(cb => cb.checked = false); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
+      segFilterNoneBtn.__wired = true;
+    }
+    // Individual filter checkboxes (dynamic)
+    getSegFilterCbs().forEach(cb => {
+      if (!cb.__wired) {
+        cb.addEventListener('change', () => { const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
+        cb.__wired = true;
+      }
+    });
+    eventModeCb.__wiredSegment = true;
+  }
+  document.addEventListener('DOMContentLoaded', wireSegmentControlsOnce);
 
   const marksAll = []; // {idx, type}
   const segmentsAll = []; // {startIdx,endIdx,type}
@@ -53,7 +94,7 @@
 
   // Note: .vak expected as tab-delimited with 1 time column + 12 channels
 
-  const getEnabledTypes = () => new Set(segFilterCbs.filter(el => el.checked).map(el => String(el.dataset.type)));
+  const getEnabledTypes = () => { return new Set(getSegFilterCbs().filter(el => el.checked).map(el => String(el.dataset.type))); };
   const syncCounts = () => {
     const el = document.getElementById('countsLine');
     if (el) el.textContent = `${marksAll.length} marks | ${segmentsAll.length} segments`;
@@ -78,26 +119,8 @@
     if (myPlot && Math.abs((myPlot.clientHeight || 0) - target) > 4) myPlot.style.height = `${target}px`;
   };
 
-  if (eventModeCb) {
-    eventModeCb.addEventListener('change', () => {
-      pendingSegStartIdx = null;
-      if (eventModeCb.checked && deleteSegMode) { deleteSegMode = false; deleteSegBtn && deleteSegBtn.classList.remove('active'); }
-      if (statusOutput) statusOutput.innerText = eventModeCb.checked ? 'Event mode: click start and end' : '';
-    });
-  }
   let deleteSegMode = false;
   let pendingSegStartIdx = null;
-  if (deleteSegBtn) {
-    deleteSegBtn.addEventListener('click', () => {
-      deleteSegMode = !deleteSegMode;
-      if (deleteSegMode && eventModeCb && eventModeCb.checked) { eventModeCb.checked = false; pendingSegStartIdx = null; }
-      deleteSegBtn.classList.toggle('active', deleteSegMode);
-      if (statusOutput) statusOutput.innerText = deleteSegMode ? 'Delete mode: click shaded segment to remove' : '';
-    });
-  }
-  segFilterAllBtn && segFilterAllBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = true); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
-  segFilterNoneBtn && segFilterNoneBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = false); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
-  segFilterCbs.forEach(cb => cb.addEventListener('change', () => { const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); }));
 
   const findIndex = binarySearchIndex; window._binaryFindIndex = findIndex;
   const decimate = (xs, ys, maxPoints) => { const n = xs.length; if (n <= maxPoints) return { x: xs, y: ys }; const step = Math.ceil(n / maxPoints); const nx = [], ny = []; for (let i = 0; i < n; i += step) { nx.push(xs[i]); ny.push(ys[i]); } return { x: nx, y: ny }; };
@@ -594,7 +617,9 @@
 
     plot.on('plotly_click', function(evt){
       const pts = evt.points && evt.points.length ? evt.points : null; if (!pts) return;
-      if (!deleteSegMode && eventModeCb && eventModeCb.checked) {
+  // Ensure controls exist
+  if (!eventModeCb) wireSegmentControlsOnce();
+  if (!deleteSegMode && eventModeCb && eventModeCb.checked) {
         const p0 = pts[0]; const xNum = Number(p0.x); const idx = findIdx(xNum);
         if (pendingSegStartIdx == null) { pendingSegStartIdx = idx; if (statusOutput) statusOutput.innerText = `Start set @ ${fullX[idx]}`; }
         else { const startI = Math.min(pendingSegStartIdx, idx); const endI = Math.max(pendingSegStartIdx, idx); const typ = eventTypeSel ? String(eventTypeSel.value || 'Event') : 'Event'; segmentsAll.push({ startIdx:startI, endIdx:endI, type:typ }); segmentsAll.sort((a,b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx); pendingSegStartIdx = null; if (statusOutput) statusOutput.innerText = `${typ}: ${fullX[startI]} - ${fullX[endI]}`; const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }
@@ -708,5 +733,23 @@
     if (!Array.isArray(segmentsAll) || segmentsAll.length === 0) { alert('There are no segments to download'); return; }
     const lines = segmentsAll.map(s => { const x0 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]) || 0; const x1 = Number(fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]) || 0; return `${x0}\t${x1}\t${s.type}`; });
     const text = lines.join('\n') + '\n'; downloadText(text, 'segments.txt');
+  });
+
+  // Late wiring for Clear Marks (button appears after script tag in HTML)
+  document.addEventListener('DOMContentLoaded', () => {
+    const lateClearBtn = document.getElementById('clearMarks');
+    if (lateClearBtn && !lateClearBtn.__wired) {
+      lateClearBtn.addEventListener('click', () => {
+        marksAll.length = 0;
+        segmentsAll.length = 0;
+        pendingSegStartIdx = null;
+        const start = Number(currentStart || 0);
+        const end = Math.min(fullX.length, start + windowSize);
+        renderWindow(start, end);
+        syncCounts();
+        if (statusOutput) statusOutput.innerText = 'Cleared all marks & segments';
+      });
+      lateClearBtn.__wired = true;
+    }
   });
 })();
