@@ -350,6 +350,7 @@
   // Wire Automatic Delineation: send time + 12 channels to backend as a 13-column matrix
   function wireAutomaticDelineation() {
     const btn = document.getElementById('automaticDelineation');
+  const busy = document.getElementById('busyOverlay');
     if (!btn || btn.__wired) return;
     btn.addEventListener('click', async () => {
       try {
@@ -370,6 +371,7 @@
           matrix[i] = row;
         }
   if (statusOutput) statusOutput.innerText = 'Analyzing';
+        if (busy) busy.classList.remove('hidden');
         const resp = await fetch(`${API_BASE}/api/set_ecg`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -417,11 +419,13 @@
         const start = Number(currentStart || 0);
         const end = Math.min(fullX.length, start + windowSize);
         renderWindow(start, end);
-        if (statusOutput) statusOutput.innerText = '';
+  if (statusOutput) statusOutput.innerText = '';
+  if (busy) busy.classList.add('hidden');
       } catch (err) {
         console.error('Automatic Delineation error:', err);
         alert('No se pudo enviar el ECG al backend. Revisa la consola.');
         if (statusOutput) statusOutput.innerText = 'Error sending ECG to backend';
+  if (busy) busy.classList.add('hidden');
       }
     });
     btn.__wired = true;
