@@ -47,7 +47,20 @@
   // Note: .vak expected as tab-delimited with 1 time column + 12 channels
 
   const getEnabledTypes = () => new Set(segFilterCbs.filter(el => el.checked).map(el => String(el.dataset.type)));
-  const syncCounts = () => { const el = document.getElementById('countsLine'); if (el) el.textContent = `${marksAll.length} marks | ${segmentsAll.length} segments`; };
+  const syncCounts = () => {
+    const el = document.getElementById('countsLine');
+    if (el) el.textContent = `${marksAll.length} marks | ${segmentsAll.length} segments`;
+    const detail = document.getElementById('countsDetails');
+    if (detail) {
+      if (!marksAll.length) { detail.textContent = ''; return; }
+      const byType = marksAll.reduce((acc,m)=>{ acc[m.type]=(acc[m.type]||0)+1; return acc; },{});
+      const order = ['P','Q','R','S','T'];
+      const parts = order.filter(t=>byType[t]).map(t=>`${t}:${byType[t]}`);
+      const extra = Object.keys(byType).filter(k=>!order.includes(k)).sort();
+      extra.forEach(k=>parts.push(`${k}:${byType[k]}`));
+      detail.textContent = parts.join('  •  ');
+    }
+  };
 
   const getRightPanelHeight = () => { if (!rightPanel) return Math.max(window.innerHeight - 32, 640); return Math.max(320, rightPanel.clientHeight || 0); };
   const updatePlotContainerHeight = (visibleChannelsCount) => {
@@ -183,6 +196,16 @@
     const markShapes = visibleMarks.map(m => { const x = fullX[m.idx]; return { type:'line', xref:'x', yref:'paper', x0:x, x1:x, y0:0, y1:1, line:{ color:'#d0d0d0', width:1 }, id:`vline-${m.idx}-${m.type}`, layer:'below' }; });
     const markAnns = [];
     // Only show the fiducial letter permanently; index/time will appear on hover instead
+    const colorForFid = (t)=>{
+      switch(t){
+        case 'P': return '#1d4ed8';
+        case 'Q': return '#ea580c';
+        case 'R': return '#dc2626';
+        case 'S': return '#16a34a';
+        case 'T': return '#9333ea';
+        default: return '#111827';
+      }
+    };
     visibleMarks.forEach(m => {
       const x = fullX[m.idx];
       const baseY = 1.0;
@@ -194,10 +217,10 @@
         align: 'center',
         yanchor: 'bottom',
         yshift: 6, // closer to the line now that the numeric label is removed
-        bgcolor: 'rgba(255,255,255,0.9)',
-        bordercolor: '#111827',
+        bgcolor: 'rgba(255,255,255,0.92)',
+        bordercolor: colorForFid(m.type),
         borderwidth: 1,
-        font: { color: '#111827', size: 11, family: 'monospace' },
+        font: { color: colorForFid(m.type), size: 11, family: 'monospace', weight:600 },
         id: `ann-type-${m.idx}-${m.type}`
       });
     });
@@ -210,12 +233,13 @@
         const yaxisName = i === 0 ? 'y' : 'y' + (i + 1);
         const yval = channels[chIdx] && channels[chIdx][m.idx] !== undefined ? channels[chIdx][m.idx] : null;
         if (yval == null) return;
+        const fidColor = (m.type==='R')?'#dc2626':(m.type==='P')?'#1d4ed8':(m.type==='T')?'#9333ea':'red';
         dataOut.push({
           x: [xval],
           y: [yval],
           type: 'scatter',
           mode: 'markers',
-          marker: { color: 'red', size: 8 },
+          marker: { color: fidColor, size: 8 },
           showlegend: false,
           hoverinfo: 'text',
           text: [String(xval)], // show index on hover m.idx
@@ -349,7 +373,7 @@
 
   // Wire Automatic Delineation: send time + 12 channels to backend as a 13-column matrix
   function wireAutomaticDelineation() {
-    const btn = document.getElementById('automaticDelineation');
+  const btn = document.getElementById('automaticDelineation');
   const busy = document.getElementById('busyOverlay');
     if (!btn || btn.__wired) return;
     btn.addEventListener('click', async () => {
@@ -371,7 +395,13 @@
           matrix[i] = row;
         }
   if (statusOutput) statusOutput.innerText = 'Analyzing';
-        if (busy) busy.classList.remove('hidden');
+  if (busy) busy.classList.remove('hidden');
+  if (btn) btn.disabled = true;
+  let cancelled = false;
+  const cancel = () => { cancelled = true; if (busy) busy.classList.add('hidden'); if (btn) btn.disabled = false; statusOutput && (statusOutput.innerText='Cancelled'); };
+  const escHandler = (ev)=>{ if(ev.key==='Escape'){ window.removeEventListener('keydown',escHandler); cancel(); } };
+  window.addEventListener('keydown', escHandler);
+  if (busy && !busy.__cancelBound){ busy.addEventListener('click', (e)=>{ if(e.target===busy) cancel(); }); busy.__cancelBound=true; }
         const resp = await fetch(`${API_BASE}/api/set_ecg`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -381,7 +411,8 @@
           const msg = await resp.text();
           throw new Error(`Backend error (${resp.status}): ${msg}`);
         }
-        const json = await resp.json();
+  if (cancelled) return;
+  const json = await resp.json();
   // (Logging removed per request)
 
         // -------- Auto-mark fiducial points (R, P, T) on the plot ----------
@@ -421,11 +452,13 @@
         renderWindow(start, end);
   if (statusOutput) statusOutput.innerText = '';
   if (busy) busy.classList.add('hidden');
+  if (btn) btn.disabled = false;
       } catch (err) {
         console.error('Automatic Delineation error:', err);
         alert('No se pudo enviar el ECG al backend. Revisa la consola.');
         if (statusOutput) statusOutput.innerText = 'Error sending ECG to backend';
   if (busy) busy.classList.add('hidden');
+  if (btn) btn.disabled = false;
       }
     });
     btn.__wired = true;
