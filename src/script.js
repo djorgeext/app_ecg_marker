@@ -249,7 +249,7 @@
         });
       });
     });
-  const reactResult = Plotly.react(myPlot, dataOut, layout, { displayModeBar:true, scrollZoom:true, editable:true, edits:{ titleText:false, axisTitleText:false, annotationText:false, legendPosition:false, colorbarPosition:false, shapePosition:false } });
+  const reactResult = Plotly.react(myPlot, dataOut, layout, { displayModeBar:true, scrollZoom:false, editable:true, edits:{ titleText:false, axisTitleText:false, annotationText:false, legendPosition:false, colorbarPosition:false, shapePosition:false } });
     if (reactResult && typeof reactResult.then === 'function') {
       reactResult.then((gd) => {
         if (!plotEventsWired && gd && typeof gd.on === 'function') {
@@ -486,6 +486,107 @@
     const plot = myPlot;
     const findIdx = (xNum) => findIndex(fullX, xNum);
 
+    // Custom wheel zoom: temporal axis only, keep pointer time fixed
+    if (!plot.__wheelZoomBound) {
+      plot.addEventListener('wheel', (e) => {
+        if (!fullX || fullX.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const ax = plot._fullLayout && plot._fullLayout.xaxis;
+        const rect = plot.getBoundingClientRect();
+        const axisOffset = (ax && typeof ax._offset === 'number') ? ax._offset : rect.left;
+        const axisLen = (ax && typeof ax._length === 'number' && ax._length > 0) ? ax._length : rect.width;
+        const px = e.clientX - axisOffset;
+        let frac = px / axisLen;
+        if (!isFinite(frac)) frac = 0.5;
+        frac = Math.max(0, Math.min(1, frac));
+
+        // Current window
+        const startIdxOrig = currentStart;
+        const endIdxOrig = Math.min(fullX.length, startIdxOrig + windowSize);
+        if (endIdxOrig - startIdxOrig < 2) return;
+        const tStartOrig = Number(fullX[startIdxOrig]);
+        const tEndOrig = Number(fullX[endIdxOrig - 1]);
+        const spanOrig = (tEndOrig - tStartOrig) || 1;
+        const tPointer = tStartOrig + spanOrig * frac;
+
+  const zoomIn = e.deltaY < 0;
+  // Slightly gentler zoom factor to reduce visual jump
+  const factor = zoomIn ? 0.85 : 1/0.85; // ~0.85 / 1.176
+        const dtGlobal = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) || 1 : 1;
+        let newSpan = spanOrig * factor;
+        const minSpan = dtGlobal * 50;
+        const maxSpan = (Number(fullX[fullX.length - 1]) - Number(fullX[0])) || spanOrig;
+        if (newSpan < minSpan) newSpan = minSpan;
+        if (newSpan > maxSpan) newSpan = maxSpan;
+
+        // Initial new window aligned so pointer stays at same fractional position
+        let newStartTime = tPointer - frac * newSpan;
+        let newEndTime = newStartTime + newSpan;
+        const globalStartTime = Number(fullX[0]);
+        const globalEndTime = Number(fullX[fullX.length - 1]);
+        if (newStartTime < globalStartTime) { newStartTime = globalStartTime; newEndTime = newStartTime + newSpan; }
+        if (newEndTime > globalEndTime) { newEndTime = globalEndTime; newStartTime = newEndTime - newSpan; }
+
+        let newStartIdx = findIndex(fullX, newStartTime);
+        let newEndIdx = findIndex(fullX, newEndTime) + 1;
+        if (newEndIdx <= newStartIdx) newEndIdx = Math.min(fullX.length, newStartIdx + 2);
+
+        // Iterative correction to reduce drift (sub-sample anchoring approximation)
+        for (let iter = 0; iter < 4; iter++) {
+          const tStartTmp = Number(fullX[newStartIdx]);
+          const tEndTmp = Number(fullX[Math.min(fullX.length - 1, newEndIdx - 1)]);
+          const spanTmp = (tEndTmp - tStartTmp) || 1;
+          const tUnder = tStartTmp + spanTmp * frac;
+          const drift = tUnder - tPointer;
+          if (Math.abs(drift) <= dtGlobal * 0.25) break; // good enough
+          const shiftSamples = Math.round(drift / dtGlobal);
+          if (shiftSamples === 0) break;
+          newStartIdx -= shiftSamples;
+          newEndIdx -= shiftSamples;
+          if (newStartIdx < 0) { newEndIdx += -newStartIdx; newStartIdx = 0; }
+          if (newEndIdx > fullX.length) { const diff = newEndIdx - fullX.length; newStartIdx -= diff; newEndIdx = fullX.length; if (newStartIdx < 0) newStartIdx = 0; }
+          if (newEndIdx - newStartIdx < 2) newEndIdx = Math.min(fullX.length, newStartIdx + 2);
+        }
+
+        windowSize = newEndIdx - newStartIdx;
+        currentStart = Math.max(0, Math.min(fullX.length - windowSize, newStartIdx));
+        setScrollbar();
+        const targetEnd = Math.min(fullX.length, currentStart + windowSize);
+        renderWindow(currentStart, targetEnd);
+
+        // Post-render correction using actual new axis geometry
+        const pointerClientX = e.clientX;
+        setTimeout(() => {
+          const ax2 = plot._fullLayout && plot._fullLayout.xaxis;
+          if (!ax2) return;
+          const axisOffset2 = (typeof ax2._offset === 'number') ? ax2._offset : plot.getBoundingClientRect().left;
+          const axisLen2 = (typeof ax2._length === 'number' && ax2._length > 0) ? ax2._length : plot.getBoundingClientRect().width;
+          let frac2 = (pointerClientX - axisOffset2) / axisLen2;
+          if (!isFinite(frac2)) frac2 = 0.5; frac2 = Math.max(0, Math.min(1, frac2));
+          const tStartNow = Number(fullX[currentStart]);
+          const tEndNow = Number(fullX[Math.min(fullX.length - 1, currentStart + windowSize - 1)]);
+          const spanNow = (tEndNow - tStartNow) || 1;
+          const tUnderNow = tStartNow + spanNow * frac2;
+          const driftNow = tUnderNow - tPointer;
+          const dtLocal = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) || 1 : 1;
+          if (Math.abs(driftNow) > dtLocal * 0.6) {
+            // Compute shift in samples (round) and clamp
+            let shift = Math.round(driftNow / dtLocal);
+            if (shift !== 0) {
+              currentStart -= shift;
+              if (currentStart < 0) currentStart = 0;
+              if (currentStart > fullX.length - windowSize) currentStart = fullX.length - windowSize;
+              const end3 = Math.min(fullX.length, currentStart + windowSize);
+              renderWindow(currentStart, end3);
+              setScrollbar();
+            }
+          }
+        }, 0);
+      }, { passive:false });
+      plot.__wheelZoomBound = true;
+    }
+
     plot.on('plotly_click', function(evt){
       const pts = evt.points && evt.points.length ? evt.points : null; if (!pts) return;
       if (!deleteSegMode && eventModeCb && eventModeCb.checked) {
@@ -512,7 +613,7 @@
 
     plot.on('plotly_clickannotation', function(e){ if (!e || !e.annotation || !e.annotation.id) return; const m = String(e.annotation.id).match(/ann-(?:time|type)-(\d+)-([PQRST])/); if (m) { const idx = Number(m[1]); const pos = marksAll.findIndex(mm => mm.idx === idx); if (pos !== -1) marksAll.splice(pos, 1); else marksAll.push({ idx, type: getCurrentFid() }); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); } });
 
-    plot.on('plotly_relayout', function(eventdata){
+  plot.on('plotly_relayout', function(eventdata){
       const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
       const right = eventdata['xaxis.range[1]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][1] : null);
       if (left == null || right == null) return;
