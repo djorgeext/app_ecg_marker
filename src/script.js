@@ -123,7 +123,41 @@
   let pendingSegStartIdx = null;
 
   const findIndex = binarySearchIndex; window._binaryFindIndex = findIndex;
-  const decimate = (xs, ys, maxPoints) => { const n = xs.length; if (n <= maxPoints) return { x: xs, y: ys }; const step = Math.ceil(n / maxPoints); const nx = [], ny = []; for (let i = 0; i < n; i += step) { nx.push(xs[i]); ny.push(ys[i]); } return { x: nx, y: ny }; };
+  // Decimation with simple step strategy; cached for speed during fast zooms
+  const decimCache = new Map(); // key: `${ch}|${start}|${end}|${max}` -> {x,y}
+  const decimate = (xs, ys, maxPoints, chIdx, startIndex, endIndex) => {
+    const n = xs.length;
+    if (n <= maxPoints) return { x: xs, y: ys };
+    const key = `${chIdx}|${startIndex}|${endIndex}|${maxPoints}`;
+    const cached = decimCache.get(key);
+    if (cached) return cached;
+    const step = Math.ceil(n / maxPoints);
+    const nx = [], ny = [];
+    for (let i = 0; i < n; i += step) { nx.push(xs[i]); ny.push(ys[i]); }
+    const out = { x: nx, y: ny };
+    decimCache.set(key, out);
+    // Simple cache size control
+    if (decimCache.size > 5000) {
+      const it = decimCache.keys().next();
+      if (!it.done) decimCache.delete(it.value);
+    }
+    return out;
+  };
+
+  // Throttled render queue
+  let renderPending = false;
+  let lastRenderArgs = null; // [startIndex, endIndex]
+  const scheduleRender = (startIndex, endIndex) => {
+    lastRenderArgs = [startIndex, endIndex];
+    if (renderPending) return;
+    renderPending = true;
+    setTimeout(() => {
+      renderPending = false;
+      if (!lastRenderArgs) return;
+      const [s,e] = lastRenderArgs; lastRenderArgs = null;
+      renderWindow(s,e);
+    }, 20); // ~50 FPS throttle
+  };
 
   const buildChannelCheckboxes = () => {
     const container = document.getElementById('channelList');
@@ -184,10 +218,12 @@
   };
 
   let resizeTimer = null;
-  window.addEventListener('resize', () => { if (resizeTimer) clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { const selCount = getSelectedIndices().length || 0; updatePlotContainerHeight(selCount); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }, 120); });
+  window.addEventListener('resize', () => { if (resizeTimer) clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { const selCount = getSelectedIndices().length || 0; updatePlotContainerHeight(selCount); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end); }, 120); });
 
   let plotEventsWired = false;
 
+  // Track last shapes hash to avoid rebuilding if no changes
+  let lastShapesHash = '';
   const renderWindow = (startIndex, endIndex) => {
     if (!fullX || fullX.length === 0 || !channels || channels.length === 0) { Plotly.purge(myPlot); return; }
     let sel = getSelectedIndices();
@@ -211,8 +247,12 @@
     const layout = { showlegend:false, margin:{ t:70, r:20, l:50, b:40 }, height: containerHeight, title:{ text:'' } };
     for (let i = 0; i < m; i++) { const top = 1 - i * (h + gap); const bottom = top - h; const yName = i === 0 ? 'yaxis' : 'yaxis' + (i + 1); layout[yName] = { domain:[bottom, top], anchor:'x', showgrid:true, gridcolor:'#e5e7eb', gridwidth:1, zeroline:false, layer:'below traces', title:{ text:'' } }; }
     const maxPerTrace = Math.max(1000, Math.floor(maxRender / Math.max(1, m)));
-    const nSlice = Math.max(1, endIndex - startIndex); const step = Math.ceil(nSlice / maxPerTrace);
-    sel.forEach((chIdx, i) => { const xs = fullX.slice(startIndex, endIndex); const ys = channels[chIdx].slice(startIndex, endIndex); const dec = decimate(xs, ys, maxPerTrace); dataOut.push({ x: dec.x, y: dec.y, type:'scatter', mode:'lines', name:'Ch' + (chIdx + 1), line:{ width:1 }, yaxis: i === 0 ? 'y' : 'y' + (i + 1) }); });
+    sel.forEach((chIdx, i) => {
+      const xs = fullX.slice(startIndex, endIndex);
+      const ys = channels[chIdx].slice(startIndex, endIndex);
+      const dec = decimate(xs, ys, maxPerTrace, chIdx, startIndex, endIndex);
+      dataOut.push({ x: dec.x, y: dec.y, type:'scatter', mode:'lines', name:'Ch' + (chIdx + 1), line:{ width:1 }, yaxis: i === 0 ? 'y' : 'y' + (i + 1) });
+    });
     layout.xaxis = { anchor: 'y' + (m === 1 ? '' : (m)), showgrid:true, gridcolor:'#e5e7eb', gridwidth:1, zeroline:false, layer:'below traces', title:{ text:'' } };
 
     const existingShapes = Array.isArray(myPlot.layout && myPlot.layout.shapes) ? myPlot.layout.shapes.filter(s => !s.id || !/^(vline-|seg-)/.test(String(s.id))) : [];
@@ -253,8 +293,16 @@
         id: `ann-type-${m.idx}-${m.type}`
       });
     });
-    layout.shapes = existingShapes.concat(segShapes, markShapes);
-    layout.annotations = existingAnns.concat(markAnns);
+    // Guard: only rebuild shapes/annotations when changed
+    const shapesHash = Utils.hashMarksSegs(visibleMarks, visibleSegs);
+    if (shapesHash !== lastShapesHash) {
+      layout.shapes = existingShapes.concat(segShapes, markShapes);
+      layout.annotations = existingAnns.concat(markAnns);
+      lastShapesHash = shapesHash;
+    } else {
+      layout.shapes = myPlot.layout && myPlot.layout.shapes ? myPlot.layout.shapes : existingShapes;
+      layout.annotations = myPlot.layout && myPlot.layout.annotations ? myPlot.layout.annotations : existingAnns;
+    }
     visibleMarks.forEach((m) => {
   const xval = timeAt(fullX,m.idx);
       const selIdx = getSelectedIndices();
@@ -313,7 +361,7 @@
     const hideMenu = () => { const em = document.getElementById('exportMenu'); if (em) em.classList.add('hidden'); };
     const toggleMenu = () => { const em = document.getElementById('exportMenu'); if (em) em.classList.toggle('hidden'); };
 
-    if (exportBtnEl && !exportBtnEl.__wired) {
+  if (exportBtnEl && !exportBtnEl.__wired) {
       exportBtnEl.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
       exportBtnEl.__wired = true;
     }
@@ -495,17 +543,17 @@
 
   const setScrollbar = () => { if (!sb || !sbContent) return; const ratio = fullX.length > 0 ? (fullX.length / Math.max(windowSize, 1)) : 1; sbContent.style.width = `${Math.max(ratio * 100, 500)}px`; syncScrollToCurrent(); };
   const syncScrollToCurrent = () => { if (!sb || !sbContent) return; const maxScroll = sbContent.scrollWidth - sb.clientWidth; const maxStart = Math.max(0, fullX.length - windowSize); const pos = maxStart > 0 ? (currentStart / maxStart) * maxScroll : 0; sb.scrollLeft = isFinite(pos) ? pos : 0; };
-  sb && sb.addEventListener('scroll', () => { const maxScroll = sbContent.scrollWidth - sb.clientWidth; const frac = maxScroll > 0 ? (sb.scrollLeft / maxScroll) : 0; const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.round(frac * maxStart); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); const info = document.getElementById('navigatorInfo'); if (info) info.innerText = `Window: ${currentStart} - ${end} / ${fullX.length}`; });
+  sb && sb.addEventListener('scroll', () => { const maxScroll = sbContent.scrollWidth - sb.clientWidth; const frac = maxScroll > 0 ? (sb.scrollLeft / maxScroll) : 0; const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.round(frac * maxStart); const end = Math.min(fullX.length, currentStart + windowSize); scheduleRender(currentStart, end); const info = document.getElementById('navigatorInfo'); if (info) info.innerText = `Window: ${currentStart} - ${end} / ${fullX.length}`; });
   const stepSmall = () => Math.max(1, Math.floor(windowSize * 0.1));
   const stepLarge = () => Math.max(1, Math.floor(windowSize * 0.5));
-  let holdTimer = null; const stopHold = () => { if (holdTimer) { clearInterval(holdTimer); holdTimer = null; } }; const startHold = (dir) => { stopHold(); const stepHold = () => Math.max(1, Math.floor(windowSize * 0.02)); holdTimer = setInterval(() => { const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.min(maxStart, Math.max(0, currentStart + (dir === 'left' ? -stepHold() : stepHold()))); syncScrollToCurrent(); }, 40); };
+  let holdTimer = null; const stopHold = () => { if (holdTimer) { clearInterval(holdTimer); holdTimer = null; } }; const startHold = (dir) => { stopHold(); const stepHold = () => Math.max(1, Math.floor(windowSize * 0.02)); holdTimer = setInterval(() => { const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.min(maxStart, Math.max(0, currentStart + (dir === 'left' ? -stepHold() : stepHold()))); syncScrollToCurrent(); const end = Math.min(fullX.length, currentStart + windowSize); scheduleRender(currentStart, end); }, 40); };
   if (btnLeft) { btnLeft.addEventListener('click', (e) => { e.preventDefault(); currentStart = Math.max(0, currentStart - stepSmall()); syncScrollToCurrent(); }); btnLeft.addEventListener('contextmenu', (e) => { e.preventDefault(); currentStart = Math.max(0, currentStart - stepLarge()); syncScrollToCurrent(); }); btnLeft.addEventListener('mousedown', (e) => { e.preventDefault(); startHold('left'); }); btnLeft.addEventListener('mouseup', stopHold); btnLeft.addEventListener('mouseleave', stopHold); btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); startHold('left'); }, { passive:false }); btnLeft.addEventListener('touchend', stopHold); btnLeft.addEventListener('touchcancel', stopHold); }
   if (btnRight) { btnRight.addEventListener('click', (e) => { e.preventDefault(); const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.min(maxStart, currentStart + stepSmall()); syncScrollToCurrent(); }); btnRight.addEventListener('contextmenu', (e) => { e.preventDefault(); const maxStart = Math.max(0, fullX.length - windowSize); currentStart = Math.min(maxStart, currentStart + stepLarge()); syncScrollToCurrent(); }); btnRight.addEventListener('mousedown', (e) => { e.preventDefault(); startHold('right'); }); btnRight.addEventListener('mouseup', stopHold); btnRight.addEventListener('mouseleave', stopHold); btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); startHold('right'); }, { passive:false }); btnRight.addEventListener('touchend', stopHold); btnRight.addEventListener('touchcancel', stopHold); }
   document.addEventListener('mouseup', stopHold);
-  window.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const maxStart = Math.max(0, fullX.length - windowSize); const step = e.shiftKey ? stepLarge() : stepSmall(); currentStart = Math.min(maxStart, Math.max(0, currentStart + (e.key === 'ArrowLeft' ? -step : step))); syncScrollToCurrent(); e.preventDefault(); } });
+  window.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const maxStart = Math.max(0, fullX.length - windowSize); const step = e.shiftKey ? stepLarge() : stepSmall(); currentStart = Math.min(maxStart, Math.max(0, currentStart + (e.key === 'ArrowLeft' ? -step : step))); syncScrollToCurrent(); const end = Math.min(fullX.length, currentStart + windowSize); scheduleRender(currentStart, end); e.preventDefault(); } });
 
   // Attach a fallback Show handler now and re-attach after building the UI, in case this runs before DOM is ready
-  { const btn = document.getElementById('showSelected'); if (btn) btn.addEventListener('click', () => { const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }); }
+  { const btn = document.getElementById('showSelected'); if (btn) btn.addEventListener('click', () => { const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end); }); }
 
   myPlot && myPlot.addEventListener('plotly_click', (evt) => {});
   // Use Plotly events via Plotly.on below
@@ -581,7 +629,12 @@
         currentStart = Math.max(0, Math.min(fullX.length - windowSize, newStartIdx));
         setScrollbar();
         const targetEnd = Math.min(fullX.length, currentStart + windowSize);
-        renderWindow(currentStart, targetEnd);
+        // Faster: update only x-range, then schedule a light re-render (traces reuse)
+        const x0 = Number(fullX[currentStart]);
+        const x1 = Number(fullX[targetEnd-1]);
+        Plotly.relayout(myPlot, { 'xaxis.range': [x0, x1] }).then(()=>{
+          scheduleRender(currentStart, targetEnd);
+        });
 
         // Post-render correction using actual new axis geometry
         const pointerClientX = e.clientX;
@@ -606,7 +659,9 @@
               if (currentStart < 0) currentStart = 0;
               if (currentStart > fullX.length - windowSize) currentStart = fullX.length - windowSize;
               const end3 = Math.min(fullX.length, currentStart + windowSize);
-              renderWindow(currentStart, end3);
+              Plotly.relayout(myPlot, { 'xaxis.range': [Number(fullX[currentStart]), Number(fullX[end3-1])] }).then(()=>{
+                scheduleRender(currentStart, end3);
+              });
               setScrollbar();
             }
           }
@@ -622,26 +677,26 @@
   if (!deleteSegMode && eventModeCb && eventModeCb.checked) {
         const p0 = pts[0]; const xNum = Number(p0.x); const idx = findIdx(xNum);
         if (pendingSegStartIdx == null) { pendingSegStartIdx = idx; if (statusOutput) statusOutput.innerText = `Start set @ ${fullX[idx]}`; }
-        else { const startI = Math.min(pendingSegStartIdx, idx); const endI = Math.max(pendingSegStartIdx, idx); const typ = eventTypeSel ? String(eventTypeSel.value || 'Event') : 'Event'; segmentsAll.push({ startIdx:startI, endIdx:endI, type:typ }); segmentsAll.sort((a,b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx); pendingSegStartIdx = null; if (statusOutput) statusOutput.innerText = `${typ}: ${fullX[startI]} - ${fullX[endI]}`; const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }
+  else { const startI = Math.min(pendingSegStartIdx, idx); const endI = Math.max(pendingSegStartIdx, idx); const typ = eventTypeSel ? String(eventTypeSel.value || 'Event') : 'Event'; segmentsAll.push({ startIdx:startI, endIdx:endI, type:typ }); segmentsAll.sort((a,b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx); pendingSegStartIdx = null; if (statusOutput) statusOutput.innerText = `${typ}: ${fullX[startI]} - ${fullX[endI]}`; const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end); }
         return;
       }
       if (deleteSegMode) {
         const p0 = pts[0]; const xNum = Number(p0.x); const i = segmentsAll.findIndex(s => { const x0 = fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]; const x1 = fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]; return xNum >= Math.min(x0, x1) && xNum <= Math.max(x0, x1); });
-        if (i !== -1) { const removed = segmentsAll.splice(i, 1)[0]; if (statusOutput) statusOutput.innerText = `Removed segment: ${removed.type}`; const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }
+  if (i !== -1) { const removed = segmentsAll.splice(i, 1)[0]; if (statusOutput) statusOutput.innerText = `Removed segment: ${removed.type}`; const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end); }
         return;
       }
       const markPt = pts.find(p => p && p.customdata != null);
       const p0 = markPt || pts[0]; const xNum = Number(p0.x); const idx = findIdx(xNum);
       const dt = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) : 0; const startForTol = Number(currentStart || 0); const endForTol = Math.min(fullX.length, startForTol + windowSize); const leftX = (startForTol < fullX.length) ? Number(fullX[startForTol]) : xNum; const rightX = (endForTol-1 >= 0 && endForTol-1 < fullX.length) ? Number(fullX[endForTol-1]) : xNum; const viewWidth = Math.abs(rightX - leftX); const tolX = Math.max(Math.abs(dt) * 1.5, viewWidth * 0.01, 1e-9);
-      if (p0 && p0.customdata != null) { const mIdx = Array.isArray(p0.customdata) ? p0.customdata[0] : p0.customdata; const pos = marksAll.findIndex(m => m.idx === Number(mIdx)); if (pos !== -1) marksAll.splice(pos, 1); else marksAll.push({ idx: Number(mIdx), type: getCurrentFid() }); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); return; }
+  if (p0 && p0.customdata != null) { const mIdx = Array.isArray(p0.customdata) ? p0.customdata[0] : p0.customdata; const pos = marksAll.findIndex(m => m.idx === Number(mIdx)); if (pos !== -1) marksAll.splice(pos, 1); else marksAll.push({ idx: Number(mIdx), type: getCurrentFid() }); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end); return; }
       let nearestPos = -1; let nearestDX = Infinity; for (let i = 0; i < marksAll.length; i++) { const xm = Number(fullX[marksAll[i].idx]); if (!isFinite(xm)) continue; const d = Math.abs(xm - xNum); if (d < nearestDX) { nearestDX = d; nearestPos = i; } }
       if (nearestPos !== -1 && nearestDX <= tolX) { marksAll.splice(nearestPos, 1); }
       else { marksAll.push({ idx, type: getCurrentFid() }); }
       const map = new Map(); marksAll.forEach(m => { if (!map.has(m.idx)) map.set(m.idx, m); }); const uniq = Array.from(map.values()).sort((a,b) => a.idx - b.idx); marksAll.length = 0; uniq.forEach(v => marksAll.push(v));
-      const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end);
+  const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end);
     });
 
-    plot.on('plotly_clickannotation', function(e){ if (!e || !e.annotation || !e.annotation.id) return; const m = String(e.annotation.id).match(/ann-(?:time|type)-(\d+)-([PQRST])/); if (m) { const idx = Number(m[1]); const pos = marksAll.findIndex(mm => mm.idx === idx); if (pos !== -1) marksAll.splice(pos, 1); else marksAll.push({ idx, type: getCurrentFid() }); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); } });
+  plot.on('plotly_clickannotation', function(e){ if (!e || !e.annotation || !e.annotation.id) return; const m = String(e.annotation.id).match(/ann-(?:time|type)-(\d+)-([PQRST])/); if (m) { const idx = Number(m[1]); const pos = marksAll.findIndex(mm => mm.idx === idx); if (pos !== -1) marksAll.splice(pos, 1); else marksAll.push({ idx, type: getCurrentFid() }); const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); scheduleRender(start, end); } });
 
   plot.on('plotly_relayout', function(eventdata){
       const left = eventdata['xaxis.range[0]'] ?? (eventdata['xaxis.range'] ? eventdata['xaxis.range'][0] : null);
@@ -693,7 +748,7 @@
     channels = [ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12];
     buildChannelCheckboxes(); syncAllCheckbox();
     const selCount = getSelectedIndices().length || 0; updatePlotContainerHeight(selCount);
-    const initialStart = 0; const initialEnd = Math.min(fullX.length, initialStart + windowSize);
+  const initialStart = 0; const initialEnd = Math.min(fullX.length, initialStart + windowSize);
   const updateInfo = (start) => { const end = Math.min(fullX.length, start + windowSize); const info = document.getElementById('navigatorInfo'); if (info) info.innerText = `Window: ${start} - ${end} / ${fullX.length}`; };
   updateInfo(0);
   buildChannelCheckboxes();
@@ -701,8 +756,8 @@
   // Ensure Show button works if it wasn't bound earlier
   { const btn = document.getElementById('showSelected'); if (btn && !btn.__wired) { btn.addEventListener('click', () => { const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }); btn.__wired = true; } }
   setScrollbar();
-  // Render immediately using default-selected channels (first 3)
-  renderWindow(initialStart, initialEnd);
+  // Schedule initial render using default-selected channels (first 3)
+  scheduleRender(initialStart, initialEnd);
     statusOutput && (statusOutput.innerText = 'File loaded');
   };
 
