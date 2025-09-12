@@ -182,10 +182,49 @@
     const segShapes = visibleSegs.map(s => { const x0 = fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]; const x1 = fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]; const c = colorForType(s.type); return { type:'rect', xref:'x', yref:'paper', x0, x1, y0:0, y1:1, fillcolor:c.fill, line:{ color:c.line, width:1, dash:'dot' }, id:`seg-${s.startIdx}-${s.endIdx}-${s.type}`, layer:'below' }; });
     const markShapes = visibleMarks.map(m => { const x = fullX[m.idx]; return { type:'line', xref:'x', yref:'paper', x0:x, x1:x, y0:0, y1:1, line:{ color:'#d0d0d0', width:1 }, id:`vline-${m.idx}-${m.type}`, layer:'below' }; });
     const markAnns = [];
-    visibleMarks.forEach(m => { const x = fullX[m.idx]; const baseY = 1.0; markAnns.push({ x, y:baseY, xref:'x', yref:'paper', text:String(x), showarrow:false, align:'center', yanchor:'bottom', yshift:2, bgcolor:'rgba(255,255,255,0.85)', bordercolor:'#d9534f', borderwidth:1, font:{ color:'#d9534f', size:10 }, id:`ann-time-${m.idx}-${m.type}` }); markAnns.push({ x, y:baseY, xref:'x', yref:'paper', text:String(m.type), showarrow:false, align:'center', yanchor:'bottom', yshift:22, bgcolor:'rgba(255,255,255,0.9)', bordercolor:'#111827', borderwidth:1, font:{ color:'#111827', size:11, family:'monospace' }, id:`ann-type-${m.idx}-${m.type}` }); });
+    // Only show the fiducial letter permanently; index/time will appear on hover instead
+    visibleMarks.forEach(m => {
+      const x = fullX[m.idx];
+      const baseY = 1.0;
+      markAnns.push({
+        x, y: baseY,
+        xref: 'x', yref: 'paper',
+        text: String(m.type),
+        showarrow: false,
+        align: 'center',
+        yanchor: 'bottom',
+        yshift: 6, // closer to the line now that the numeric label is removed
+        bgcolor: 'rgba(255,255,255,0.9)',
+        bordercolor: '#111827',
+        borderwidth: 1,
+        font: { color: '#111827', size: 11, family: 'monospace' },
+        id: `ann-type-${m.idx}-${m.type}`
+      });
+    });
     layout.shapes = existingShapes.concat(segShapes, markShapes);
     layout.annotations = existingAnns.concat(markAnns);
-    visibleMarks.forEach((m) => { const xval = fullX[m.idx]; const selIdx = getSelectedIndices(); selIdx.forEach((chIdx, i) => { const yaxisName = i === 0 ? 'y' : 'y' + (i+1); const yval = channels[chIdx] && channels[chIdx][m.idx] !== undefined ? channels[chIdx][m.idx] : null; if (yval == null) return; dataOut.push({ x:[xval], y:[yval], type:'scatter', mode:'markers', marker:{ color:'red', size:8 }, showlegend:false, hoverinfo:'skip', customdata:[m.idx], yaxis:yaxisName }); }); });
+    visibleMarks.forEach((m) => {
+      const xval = fullX[m.idx];
+      const selIdx = getSelectedIndices();
+      selIdx.forEach((chIdx, i) => {
+        const yaxisName = i === 0 ? 'y' : 'y' + (i + 1);
+        const yval = channels[chIdx] && channels[chIdx][m.idx] !== undefined ? channels[chIdx][m.idx] : null;
+        if (yval == null) return;
+        dataOut.push({
+          x: [xval],
+          y: [yval],
+          type: 'scatter',
+          mode: 'markers',
+          marker: { color: 'red', size: 8 },
+          showlegend: false,
+          hoverinfo: 'text',
+          text: [String(xval)], // show index on hover m.idx
+          hovertemplate: '%{text}<extra></extra>',
+          customdata: [m.idx],
+          yaxis: yaxisName
+        });
+      });
+    });
   const reactResult = Plotly.react(myPlot, dataOut, layout, { displayModeBar:true, scrollZoom:true, editable:true, edits:{ titleText:false, axisTitleText:false, annotationText:false, legendPosition:false, colorbarPosition:false, shapePosition:false } });
     if (reactResult && typeof reactResult.then === 'function') {
       reactResult.then((gd) => {
