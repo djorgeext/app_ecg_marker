@@ -1,5 +1,12 @@
 // ECG-only script: load file, plot 12 leads, mark P/Q/R/S/T, shade segments, navigate, and export.
 (function(){
+  // Utility helpers
+  const clamp = (v,min,max)=> v<min?min:(v>max?max:v);
+  const median = (arr)=>{ if(!arr||!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; };
+  const binarySearchIndex = (arr,val)=>{ let lo=0, hi=arr.length-1; while(lo<hi){ const mid=(lo+hi)>>>1; if(arr[mid]<val) lo=mid+1; else hi=mid; } return lo; };
+  const dtOf = (xs)=> (xs && xs.length>1 ? Math.abs(Number(xs[1])-Number(xs[0]))||1 : 1);
+  const timeAt = (xs,i)=> Number(xs[clamp(i,0,xs.length-1)]);
+  const downloadText = (text, filename)=>{ const blob=new Blob([text],{type:'text/plain;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
   const input = document.getElementById('fileInput');
   const statusOutput = document.getElementById('statusOutput');
   const loadFileBtn = document.getElementById('loadFileBtn');
@@ -92,8 +99,7 @@
   segFilterNoneBtn && segFilterNoneBtn.addEventListener('click', () => { segFilterCbs.forEach(cb => cb.checked = false); const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); });
   segFilterCbs.forEach(cb => cb.addEventListener('change', () => { const end = Math.min(fullX.length, currentStart + windowSize); renderWindow(currentStart, end); }));
 
-  const findIndex = (arr, val) => { let lo = 0, hi = arr.length - 1; while (lo < hi) { const mid = Math.floor((lo + hi) / 2); if (arr[mid] < val) lo = mid + 1; else hi = mid; } return lo; };
-  window._binaryFindIndex = findIndex; // expose for potential debugging
+  const findIndex = binarySearchIndex; window._binaryFindIndex = findIndex;
   const decimate = (xs, ys, maxPoints) => { const n = xs.length; if (n <= maxPoints) return { x: xs, y: ys }; const step = Math.ceil(n / maxPoints); const nx = [], ny = []; for (let i = 0; i < n; i += step) { nx.push(xs[i]); ny.push(ys[i]); } return { x: nx, y: ny }; };
 
   const buildChannelCheckboxes = () => {
@@ -192,8 +198,8 @@
     const enabled = getEnabledTypes();
     const visibleSegs = (segmentsAll || []).filter(s => enabled.has(String(s.type)) && !(s.endIdx < startIndex || s.startIdx > endIndex));
     const colorForType = (t) => { switch (String(t)) { case 'Arrhythmia': return { fill:'rgba(16,185,129,0.25)', line:'rgba(16,185,129,0.8)' }; case 'Artifact': return { fill:'rgba(245,158,11,0.25)', line:'rgba(180,83,9,0.8)' }; case 'Noise': return { fill:'rgba(107,114,128,0.30)', line:'rgba(55,65,81,0.8)' }; case 'ST change': return { fill:'rgba(239,68,68,0.20)', line:'rgba(153,27,27,0.8)' }; default: return { fill:'rgba(139,92,246,0.25)', line:'rgba(109,40,217,0.8)' }; } };
-    const segShapes = visibleSegs.map(s => { const x0 = fullX[Math.max(0, Math.min(fullX.length - 1, s.startIdx))]; const x1 = fullX[Math.max(0, Math.min(fullX.length - 1, s.endIdx))]; const c = colorForType(s.type); return { type:'rect', xref:'x', yref:'paper', x0, x1, y0:0, y1:1, fillcolor:c.fill, line:{ color:c.line, width:1, dash:'dot' }, id:`seg-${s.startIdx}-${s.endIdx}-${s.type}`, layer:'below' }; });
-    const markShapes = visibleMarks.map(m => { const x = fullX[m.idx]; return { type:'line', xref:'x', yref:'paper', x0:x, x1:x, y0:0, y1:1, line:{ color:'#d0d0d0', width:1 }, id:`vline-${m.idx}-${m.type}`, layer:'below' }; });
+  const segShapes = visibleSegs.map(s => { const x0 = timeAt(fullX,s.startIdx); const x1 = timeAt(fullX,s.endIdx); const c = colorForType(s.type); return { type:'rect', xref:'x', yref:'paper', x0, x1, y0:0, y1:1, fillcolor:c.fill, line:{ color:c.line, width:1, dash:'dot' }, id:`seg-${s.startIdx}-${s.endIdx}-${s.type}`, layer:'below' }; });
+  const markShapes = visibleMarks.map(m => { const x = timeAt(fullX,m.idx); return { type:'line', xref:'x', yref:'paper', x0:x, x1:x, y0:0, y1:1, line:{ color:'#d0d0d0', width:1 }, id:`vline-${m.idx}-${m.type}`, layer:'below' }; });
     const markAnns = [];
     // Only show the fiducial letter permanently; index/time will appear on hover instead
     const colorForFid = (t)=>{
@@ -207,7 +213,7 @@
       }
     };
     visibleMarks.forEach(m => {
-      const x = fullX[m.idx];
+      const x = timeAt(fullX,m.idx);
       const baseY = 1.0;
       markAnns.push({
         x, y: baseY,
@@ -227,7 +233,7 @@
     layout.shapes = existingShapes.concat(segShapes, markShapes);
     layout.annotations = existingAnns.concat(markAnns);
     visibleMarks.forEach((m) => {
-      const xval = fullX[m.idx];
+  const xval = timeAt(fullX,m.idx);
       const selIdx = getSelectedIndices();
       selIdx.forEach((chIdx, i) => {
         const yaxisName = i === 0 ? 'y' : 'y' + (i + 1);
@@ -271,8 +277,7 @@
 
   window.renderWindow = renderWindow;
 
-  const downloadText = (text, filename) => { const blob = new Blob([text], { type:'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
-  const inferSamplingRate = (xs) => { if (!xs || xs.length < 3) return null; const dts = []; for (let i = 1; i < Math.min(xs.length, 4096); i++) { const d = Number(xs[i]) - Number(xs[i-1]); if (isFinite(d) && d > 0) dts.push(d); } if (!dts.length) return null; dts.sort((a,b)=>a-b); const med = dts[Math.floor(dts.length/2)]; return med > 0 ? Math.round(1/med) : null; };
+  const inferSamplingRate = (xs) => { if(!xs||xs.length<3) return null; const dts=[]; for(let i=1;i<Math.min(xs.length,4096);i++){ const d=Number(xs[i])-Number(xs[i-1]); if(isFinite(d)&&d>0) dts.push(d);} const med=median(dts); return (med&&med>0)?Math.round(1/med):null; };
 
   function wireExportControls() {
     const exportBtnEl = document.getElementById('exportBtn');
@@ -513,7 +518,7 @@
   const zoomIn = e.deltaY < 0;
   // Slightly gentler zoom factor to reduce visual jump
   const factor = zoomIn ? 0.85 : 1/0.85; // ~0.85 / 1.176
-        const dtGlobal = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) || 1 : 1;
+  const dtGlobal = dtOf(fullX);
         let newSpan = spanOrig * factor;
         const minSpan = dtGlobal * 50;
         const maxSpan = (Number(fullX[fullX.length - 1]) - Number(fullX[0])) || spanOrig;
@@ -569,7 +574,7 @@
           const spanNow = (tEndNow - tStartNow) || 1;
           const tUnderNow = tStartNow + spanNow * frac2;
           const driftNow = tUnderNow - tPointer;
-          const dtLocal = (fullX.length > 1) ? Math.abs(Number(fullX[1]) - Number(fullX[0])) || 1 : 1;
+          const dtLocal = dtGlobal;
           if (Math.abs(driftNow) > dtLocal * 0.6) {
             // Compute shift in samples (round) and clamp
             let shift = Math.round(driftNow / dtLocal);

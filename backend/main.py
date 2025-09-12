@@ -76,13 +76,14 @@ def get_P_and_T_points(segmentos_delineados, r_peaks, pre_r=78):
         T_points.append(np.where(seg == 'R')[0][-1] + start)
     return P_points, T_points
 
-ecg_signal: Optional[np.ndarray] = None  # last uploaded matrix
-model: Optional[tf.keras.Model] = None   # loaded once
+ecg_signal: Optional[np.ndarray] = None   # last uploaded matrix
+model: Optional[tf.keras.Model] = None    # loaded once
 encoder: Optional[OneHotEncoder] = None
+detectors: Optional[Detectors] = None     # reused Engzee detector
 
 @app.on_event("startup")
 def load_model_once():
-    global model, encoder
+    global model, encoder, detectors
     try:
         # Load model from current working directory (already /app/backend). Original user path 'backend/model.keras' was incorrect inside container.
         model = tf.keras.models.load_model('model.keras')
@@ -92,6 +93,11 @@ def load_model_once():
     # Prepare encoder no matter what (labels used downstream if model ok)
     encoder = OneHotEncoder(sparse_output=False)
     encoder.fit([['N'], ['P'], ['R']])
+    try:
+        detectors = Detectors(300)
+    except Exception as e:
+        print(f"WARNING: Could not init Detectors: {e}")
+        detectors = None
 
 class ECGMatrixPayload(BaseModel):
     # A 2D matrix: each row has 13 numbers (time + 12 channels). Values may be null.
@@ -108,24 +114,31 @@ def set_ecg(payload: ECGMatrixPayload):
     try:
         ecg_signal = np.array([[np.nan if v is None else float(v) for v in row] for row in payload.matrix], dtype=float)
         # Use lead at column index 2 (time=0, lead1=1, lead2=2) following user's original logic
-        r_peaks = find_r_peaks(ecg_signal[:, 2], fs=300)
+        # Prefer re-used detectors if available (slightly faster for many calls)
+        try:
+            if detectors is not None:
+                lead_sig = normalize(ecg_signal[:, 2])
+                r_peaks_arr = detectors.engzee_detector(lead_sig)
+                r_peaks = np.asarray(r_peaks_arr, dtype=int)
+            else:
+                r_peaks = find_r_peaks(ecg_signal[:, 2], fs=300)
+        except Exception as e:
+            print(f"R-peak detection failed: {e}")
+            r_peaks = np.array([], dtype=int)
 
         # If model is available, run segmentation; otherwise return empty P/T
-        if model is not None and len(r_peaks) > 0:
-            segments_list = segment_data(ecg_signal[:, 1:], r_peaks)
-            if len(segments_list) > 0:
-                segments_array = np.array(segments_list)
-                try:
+        P_points, T_points = [], []
+        if model is not None and r_peaks.size > 0:
+            try:
+                segments_list = segment_data(ecg_signal[:, 1:], r_peaks)
+                if segments_list:
+                    segments_array = np.asarray(segments_list)
                     delineados = model.predict(segments_array, verbose=0)
                     segmentos_delineados = reconvert_and_inverse_transform(delineados)
                     P_points, T_points = get_P_and_T_points(segmentos_delineados, r_peaks)
-                except Exception as e:
-                    print(f"Model prediction failed: {e}")
-                    P_points, T_points = [], []
-            else:
+            except Exception as e:
+                print(f"Segmentation pipeline failed: {e}")
                 P_points, T_points = [], []
-        else:
-            P_points, T_points = [], []
 
         # Shift indices by starting time value if it exists (assuming time monotonic)
         t0 = ecg_signal[0, 0] if ecg_signal.shape[0] > 0 else 0
