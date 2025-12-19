@@ -739,6 +739,92 @@
     });
   }
 
+  const processFileBinary = (buffer) => {
+    try {
+      const rawData = new Uint8Array(buffer);
+      const headerStart = 6;
+      
+      // Find end of JSON '}}'
+      let headerEndIndex = -1;
+      for(let i = headerStart; i < rawData.length - 1; i++) {
+          if (rawData[i] === 125 && rawData[i+1] === 125) {
+              headerEndIndex = i + 2;
+              break;
+          }
+      }
+      
+      if (headerEndIndex === -1) throw new Error("Invalid BMECG file: Header end not found");
+
+      const decoder = new TextDecoder('utf-8');
+      const headerJson = decoder.decode(rawData.subarray(headerStart, headerEndIndex));
+      const header = JSON.parse(headerJson);
+      
+      console.log("Header parsed:", header);
+
+      let dataStart = headerEndIndex;
+      while (dataStart < rawData.length && rawData[dataStart] === 0) {
+          dataStart++;
+      }
+
+      const numChannels = header.ecg.channels.length;
+      const bytesPerSample = 2;
+      const availableBytes = rawData.length - dataStart;
+      const totalElements = Math.floor(availableBytes / bytesPerSample);
+      const numSamples = Math.floor(totalElements / numChannels);
+      
+      let signalData;
+      if (dataStart % 2 === 0) {
+          signalData = new Int16Array(buffer, dataStart, numSamples * numChannels);
+      } else {
+          const sliced = rawData.slice(dataStart, dataStart + numSamples * numChannels * 2);
+          signalData = new Int16Array(sliced.buffer);
+      }
+      
+      const newChannels = [];
+      const maxChannels = 12;
+      const channelsToKeep = Math.min(numChannels, maxChannels);
+
+      for (let c = 0; c < channelsToKeep; c++) {
+          const channelArray = new Float32Array(numSamples);
+          for (let s = 0; s < numSamples; s++) {
+              channelArray[s] = signalData[s * numChannels + c];
+          }
+          newChannels.push(channelArray);
+      }
+      
+      for (let c = channelsToKeep; c < 12; c++) {
+          newChannels.push(new Float32Array(numSamples).fill(0));
+      }
+
+      const time = new Float32Array(numSamples);
+      for(let i=0; i<numSamples; i++) time[i] = i;
+
+      fullX = time;
+      channels = newChannels;
+      
+      buildChannelCheckboxes(); 
+      syncAllCheckbox();
+      const selCount = getSelectedIndices().length || 0; 
+      updatePlotContainerHeight(selCount);
+      
+      const initialStart = 0; 
+      const initialEnd = Math.min(fullX.length, initialStart + windowSize);
+      const updateInfo = (start) => { const end = Math.min(fullX.length, start + windowSize); const info = document.getElementById('navigatorInfo'); if (info) info.innerText = `Window: ${start} - ${end} / ${fullX.length}`; };
+      updateInfo(0);
+      
+      buildChannelCheckboxes();
+      wireChannelControls();
+      { const btn = document.getElementById('showSelected'); if (btn && !btn.__wired) { btn.addEventListener('click', () => { const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); }); btn.__wired = true; } }
+      
+      setScrollbar();
+      scheduleRender(initialStart, initialEnd);
+      statusOutput && (statusOutput.innerText = 'Binary file loaded');
+    } catch (err) {
+      console.error("Error processing binary file:", err);
+      statusOutput && (statusOutput.innerText = 'Error processing binary file');
+    }
+  };
+
   const processFileText = (text) => {
     if (!text) { statusOutput && (statusOutput.innerText = 'Empty file'); return; }
     const rawLines = text.split(/\r?\n/);
@@ -783,8 +869,35 @@
       statusOutput && (statusOutput.innerText = `Loading ${f.name}`);
       const fr = new FileReader();
       fr.onerror = () => { console.error('FileReader error', fr.error); statusOutput && (statusOutput.innerText = 'Error reading file (see console)'); };
-      fr.onload = (ev) => { try { processFileText(ev.target.result); } catch (err) { console.error('Error processing file:', err); statusOutput && (statusOutput.innerText = 'Error processing file (see console)'); } };
-      fr.readAsText(f, 'UTF-8');
+      fr.onload = (ev) => {
+        try {
+          const buffer = ev.target.result;
+          const view = new Uint8Array(buffer);
+          const signature = "BMECG1";
+          let isBinary = true;
+          if (buffer.byteLength < 6) isBinary = false;
+          else {
+            for (let i = 0; i < 6; i++) {
+              if (view[i] !== signature.charCodeAt(i)) {
+                isBinary = false;
+                break;
+              }
+            }
+          }
+
+          if (isBinary) {
+             processFileBinary(buffer);
+          } else {
+             const decoder = new TextDecoder('utf-8');
+             const text = decoder.decode(buffer);
+             processFileText(text);
+          }
+        } catch (err) {
+           console.error('Error processing file:', err);
+           statusOutput && (statusOutput.innerText = 'Error processing file (see console)');
+        }
+      };
+      fr.readAsArrayBuffer(f);
     });
   }
 
