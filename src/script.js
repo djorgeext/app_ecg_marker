@@ -3,6 +3,7 @@
   // Expose internal state bridge for modules
   // Filled later once variables are declared
   let __bridgeInit = null;
+  let isBmecg = false;
   // Utility helpers
   const clamp = (v,min,max)=> v<min?min:(v>max?max:v);
   const median = (arr)=>{ if(!arr||!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; };
@@ -462,6 +463,83 @@
   }
   document.addEventListener('DOMContentLoaded', wireExportControls);
 
+  // Wire Clean Signal
+  function wireCleanSignal() {
+    const btn = document.getElementById('cleanSignal');
+    const busy = document.getElementById('busyOverlay');
+    if (!btn || btn.__wired) return;
+
+    btn.addEventListener('click', async () => {
+      if (!isBmecg) return;
+      try {
+        if (!fullX || !channels || fullX.length === 0 || channels.length !== 12) {
+          alert('No valid ECG data loaded');
+          return;
+        }
+
+        if (busy) busy.classList.remove('hidden');
+        if (statusOutput) statusOutput.innerText = 'Cleaning signal...';
+
+        const n = fullX.length;
+        const matrix = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const row = new Array(13);
+          row[0] = fullX[i];
+          for (let c = 0; c < 12; c++) {
+            row[c + 1] = channels[c][i];
+          }
+          matrix[i] = row;
+        }
+
+        const resp = await fetch(`${API_BASE}/api/clean_signal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matrix })
+        });
+
+        if (!resp.ok) throw new Error(`Backend error (${resp.status})`);
+
+        const json = await resp.json();
+
+        if (json.matrix && Array.isArray(json.matrix)) {
+          const newMatrix = json.matrix;
+          const newLen = newMatrix.length;
+          const newTime = new Float32Array(newLen);
+          const newChs = [];
+          for (let c = 0; c < 12; c++) newChs.push(new Float32Array(newLen));
+
+          for (let i = 0; i < newLen; i++) {
+            newTime[i] = newMatrix[i][0];
+            for (let c = 0; c < 12; c++) {
+              newChs[c][i] = newMatrix[i][c + 1];
+            }
+          }
+
+          fullX = newTime;
+          channels = newChs;
+
+          const start = Number(currentStart || 0);
+          const end = Math.min(fullX.length, start + windowSize);
+          renderWindow(start, end);
+
+          if (statusOutput) statusOutput.innerText = 'Signal cleaned';
+        } else {
+          console.warn("Backend did not return a matrix", json);
+          if (statusOutput) statusOutput.innerText = 'Signal cleaned (no data returned)';
+        }
+
+      } catch (err) {
+        console.error('Clean Signal error:', err);
+        alert('Error cleaning signal. Check console.');
+        if (statusOutput) statusOutput.innerText = 'Error cleaning signal';
+      } finally {
+        if (busy) busy.classList.add('hidden');
+      }
+    });
+    btn.__wired = true;
+  }
+  document.addEventListener('DOMContentLoaded', wireCleanSignal);
+
   // Wire Automatic Delineation: send time + 12 channels to backend as a 13-column matrix
   function wireAutomaticDelineation() {
   const btn = document.getElementById('automaticDelineation');
@@ -740,6 +818,9 @@
   }
 
   const processFileBinary = (buffer) => {
+    isBmecg = true;
+    const cleanBtn = document.getElementById('cleanSignal');
+    if (cleanBtn) cleanBtn.disabled = false;
     try {
       const rawData = new Uint8Array(buffer);
       const headerStart = 6;
@@ -826,6 +907,9 @@
   };
 
   const processFileText = (text) => {
+    isBmecg = false;
+    const cleanBtn = document.getElementById('cleanSignal');
+    if (cleanBtn) cleanBtn.disabled = true;
     if (!text) { statusOutput && (statusOutput.innerText = 'Empty file'); return; }
     const rawLines = text.split(/\r?\n/);
     const lines = rawLines.filter(l => l.trim().length > 0);

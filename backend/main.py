@@ -1,8 +1,10 @@
+from email import header
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
+from scipy.signal import butter, filtfilt, iircomb
 from ecgdetectors import Detectors
 from sklearn.preprocessing import OneHotEncoder
 import tensorflow as tf
@@ -164,6 +166,63 @@ def get_ecg_shape():
     if ecg_signal is None:
         return {"loaded": False}
     return {"loaded": True, "shape": list(ecg_signal.shape)}
+
+@app.post("/api/clean_signal")
+def clean_signal(payload: ECGMatrixPayload):
+    """Clean the ECG signal.
+    Input: 13-column matrix (time + 12 channels).
+    Output: 13-column matrix (time + 12 filtered channels).
+    """
+    # Basic validation
+    if not payload.matrix:
+        raise HTTPException(status_code=400, detail="Matrix is empty")
+    
+    try:
+        # Convert to numpy array
+        # Shape: (N, 13)
+        signal = np.array([[np.nan if v is None else float(v) for v in row] for row in payload.matrix], dtype=float)
+        
+        if signal.ndim != 2 or signal.shape[1] != 13:
+             raise HTTPException(status_code=400, detail=f"Matrix must be 2D with 13 columns, got shape {signal.shape}")
+
+        # ---------------------------------------------------------
+        # TODO: INSERT YOUR FILTERING CODE HERE
+        # 
+        # bandpass filter between 0.5 Hz and 150 Hz for ECG signal
+        ecg_signal = signal[:, 1:]  # Extract only the 12 ECG leads
+        lowcut = 0.5
+        highcut = 150.0
+        fs = 500.0
+        order = 5
+        b, a = butter(order, [lowcut, highcut], btype='bandpass', fs=fs)
+        b2, a2 = butter(order+1, [lowcut, highcut], btype='bandpass', fs=fs)
+
+        # comb filter at w0=50 Hz to remove powerline noise
+        w0 = 50.0  # Frequency to be removed from signal (Hz)
+        quality_factor = 30.0  # Quality factor
+        b_notch, a_notch = iircomb(w0, quality_factor, ftype='notch', fs=fs)
+        ecg_signal = np.array(ecg_signal)
+        ecg_signal = ecg_signal.astype(np.float32)
+
+        ecg_signal = filtfilt(b, a, ecg_signal, axis=0)
+        ecg_signal = filtfilt(b_notch, a_notch, ecg_signal, axis=0)
+        ecg_signal = filtfilt(b2, a2, ecg_signal, axis=0)
+        # ---------------------------------------------------------
+        signal[:, 1:] = ecg_signal
+        filtered_signal = signal
+        
+        # Convert back to list for JSON response
+        # Replace NaNs with None if necessary, but standard JSON handles null
+        # Here we return list of lists
+        matrix_out = filtered_signal.tolist()
+        
+        return {
+            "status": "ok",
+            "matrix": matrix_out
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing signal: {e}")
 
 
 if __name__ == "__main__":
