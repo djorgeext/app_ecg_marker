@@ -224,6 +224,60 @@ def clean_signal(payload: ECGMatrixPayload):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing signal: {e}")
 
+@app.post("/api/find_r_peaks")
+def find_r_peaks_endpoint(payload: ECGMatrixPayload):
+    """Find R peaks in the ECG signal.
+    Input: 13-column matrix (time + 12 channels).
+    Output: List of R-peak indices.
+    """
+    if not payload.matrix:
+        raise HTTPException(status_code=400, detail="Matrix is empty")
+    
+    try:
+        signal = np.array([[np.nan if v is None else float(v) for v in row] for row in payload.matrix], dtype=float)
+        
+        if signal.ndim != 2 or signal.shape[1] != 13:
+             raise HTTPException(status_code=400, detail=f"Matrix must be 2D with 13 columns, got shape {signal.shape}")
+
+        # ---------------------------------------------------------
+        # TODO: INSERT YOUR R-PEAK DETECTION CODE HERE
+        #
+        # Input: 'signal' is a numpy array of shape (N, 13).
+        #        Column 0 is Time.
+        #        Columns 1-12 are the 12 ECG leads.
+        #
+        # Output: 'r_peaks' should be a list or numpy array of INDICES (integers)
+        #         where the R-peaks are located.
+        #
+        # Example:
+        # r_peaks = my_r_peak_detector(signal)
+        #
+        # For now, we use the existing simple detector on Lead II (index 2)
+        # ---------------------------------------------------------
+        
+        # Default implementation (can be replaced)
+        try:
+            # Use Lead II (column index 2)
+            lead_sig = signal[:, 2]
+            if detectors is not None:
+                r_peaks_arr = detectors.engzee_detector(lead_sig, fs=500)
+                r_peaks = np.asarray(r_peaks_arr, dtype=int)
+            else:
+                r_peaks = find_r_peaks(lead_sig, fs=500)
+        except Exception as e:
+            print(f"Default R-peak detection failed: {e}")
+            r_peaks = []
+            
+        # ---------------------------------------------------------
+        
+        return {
+            "status": "ok",
+            "r_peaks": list(map(int, np.asarray(r_peaks).ravel()))
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error finding R peaks: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn

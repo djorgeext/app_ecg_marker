@@ -540,6 +540,94 @@
   }
   document.addEventListener('DOMContentLoaded', wireCleanSignal);
 
+  // Wire Find R Peaks
+  function wireFindRPeaks() {
+    const btn = document.getElementById('findRPeaks');
+    const busy = document.getElementById('busyOverlay');
+    if (!btn || btn.__wired) return;
+
+    btn.addEventListener('click', async () => {
+      if (!isBmecg) return;
+      try {
+        if (!fullX || !channels || fullX.length === 0 || channels.length !== 12) {
+          alert('No valid ECG data loaded');
+          return;
+        }
+
+        if (busy) busy.classList.remove('hidden');
+        if (statusOutput) statusOutput.innerText = 'Finding R Peaks...';
+
+        const n = fullX.length;
+        const matrix = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const row = new Array(13);
+          row[0] = fullX[i];
+          for (let c = 0; c < 12; c++) {
+            row[c + 1] = channels[c][i];
+          }
+          matrix[i] = row;
+        }
+
+        const resp = await fetch(`${API_BASE}/api/find_r_peaks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matrix })
+        });
+
+        if (!resp.ok) throw new Error(`Backend error (${resp.status})`);
+
+        const json = await resp.json();
+
+        if (json.r_peaks && Array.isArray(json.r_peaks)) {
+           const pushMarks = (arr, label) => {
+              if (!arr || arr.length === 0) return;
+              const treatAsIndex = Math.max(...arr) < fullX.length;
+              arr.forEach(val => {
+                let idx = -1;
+                if (treatAsIndex) {
+                  idx = Math.round(val);
+                } else {
+                  idx = findIndex(fullX, val);
+                }
+                if (idx >= 0 && idx < fullX.length) {
+                  marksAll.push({ idx, type: label });
+                }
+              });
+            };
+            
+            pushMarks(json.r_peaks, 'R');
+            
+            // Deduplicate
+            const dedupMap = new Map();
+            for (let i = 0; i < marksAll.length; i++) {
+              const m = marksAll[i];
+              const key = `${m.idx}_${m.type}`;
+              dedupMap.set(key, m);
+            }
+            const newList = Array.from(dedupMap.values()).sort((a,b) => a.idx - b.idx || a.type.localeCompare(b.type));
+            marksAll.length = 0; newList.forEach(m => marksAll.push(m));
+
+            const start = Number(currentStart || 0);
+            const end = Math.min(fullX.length, start + windowSize);
+            renderWindow(start, end);
+
+            if (statusOutput) statusOutput.innerText = `Found ${json.r_peaks.length} R peaks`;
+        } else {
+             if (statusOutput) statusOutput.innerText = 'No R peaks found';
+        }
+
+      } catch (err) {
+        console.error('Find R Peaks error:', err);
+        alert('Error finding R peaks. Check console.');
+        if (statusOutput) statusOutput.innerText = 'Error finding R peaks';
+      } finally {
+        if (busy) busy.classList.add('hidden');
+      }
+    });
+    btn.__wired = true;
+  }
+  document.addEventListener('DOMContentLoaded', wireFindRPeaks);
+
   // Wire Automatic Delineation: send time + 12 channels to backend as a 13-column matrix
   function wireAutomaticDelineation() {
   const btn = document.getElementById('automaticDelineation');
@@ -821,6 +909,8 @@
     isBmecg = true;
     const cleanBtn = document.getElementById('cleanSignal');
     if (cleanBtn) cleanBtn.disabled = false;
+    const rPeaksBtn = document.getElementById('findRPeaks');
+    if (rPeaksBtn) rPeaksBtn.disabled = false;
     try {
       const rawData = new Uint8Array(buffer);
       const headerStart = 6;
@@ -910,6 +1000,8 @@
     isBmecg = false;
     const cleanBtn = document.getElementById('cleanSignal');
     if (cleanBtn) cleanBtn.disabled = true;
+    const rPeaksBtn = document.getElementById('findRPeaks');
+    if (rPeaksBtn) rPeaksBtn.disabled = true;
     if (!text) { statusOutput && (statusOutput.innerText = 'Empty file'); return; }
     const rawLines = text.split(/\r?\n/);
     const lines = rawLines.filter(l => l.trim().length > 0);
