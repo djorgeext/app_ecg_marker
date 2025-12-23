@@ -191,7 +191,7 @@ def clean_signal(payload: ECGMatrixPayload):
         # bandpass filter between 0.5 Hz and 150 Hz for ECG signal
         ecg_signal = signal[:, 1:]  # Extract only the 12 ECG leads
         lowcut = 0.5
-        highcut = 150.0
+        highcut = 80.0
         fs = 500.0
         order = 5
         b, a = butter(order, [lowcut, highcut], btype='bandpass', fs=fs)
