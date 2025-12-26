@@ -191,9 +191,9 @@ def clean_signal(payload: ECGMatrixPayload):
         # bandpass filter between 0.5 Hz and 150 Hz for ECG signal
         ecg_signal = signal[:, 1:]  # Extract only the 12 ECG leads
         lowcut = 0.5
-        highcut = 80.0
+        highcut = 60.0
         fs = 500.0
-        order = 5
+        order = 3
         b, a = butter(order, [lowcut, highcut], btype='bandpass', fs=fs)
         b2, a2 = butter(order+1, [lowcut, highcut], btype='bandpass', fs=fs)
 
@@ -259,11 +259,7 @@ def find_r_peaks_endpoint(payload: ECGMatrixPayload):
         try:
             # Use Lead II (column index 2)
             lead_sig = signal[:, 2]
-            if detectors is not None:
-                r_peaks_arr = detectors.engzee_detector(lead_sig, fs=500)
-                r_peaks = np.asarray(r_peaks_arr, dtype=int)
-            else:
-                r_peaks = find_r_peaks(lead_sig, fs=500)
+            r_peaks = find_r_peaks(lead_sig, fs=500)
         except Exception as e:
             print(f"Default R-peak detection failed: {e}")
             r_peaks = []
