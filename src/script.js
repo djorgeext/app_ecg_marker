@@ -1077,6 +1077,111 @@
     });
   }
 
+  const parseIntegerXMarks = (text) => {
+    const rows = String(text || '').split(/\r?\n/);
+    const values = [];
+    let invalid = 0;
+    rows.forEach((row) => {
+      const token = String(row || '').trim();
+      if (!token) return;
+      if (!/^[+-]?\d+$/.test(token)) { invalid += 1; return; }
+      const x = Number(token);
+      if (!Number.isFinite(x)) { invalid += 1; return; }
+      values.push(x);
+    });
+    return { values, invalid };
+  };
+
+  const xToNearestIndex = (xVal) => {
+    let idx = findIndex(fullX, xVal);
+    if (idx <= 0) return 0;
+    if (idx >= fullX.length) return fullX.length - 1;
+    const left = Number(fullX[idx - 1]);
+    const right = Number(fullX[idx]);
+    return Math.abs(xVal - left) <= Math.abs(right - xVal) ? (idx - 1) : idx;
+  };
+
+  function wireLoadMarks() {
+    const loadMarksBtn = document.getElementById('loadMarksBtn');
+    const loadMarksInput = document.getElementById('loadMarksInput');
+    if (!loadMarksBtn || !loadMarksInput || loadMarksBtn.__wired) return;
+
+    loadMarksBtn.addEventListener('click', () => {
+      if (!fullX || fullX.length === 0) {
+        alert('Load an ECG file first');
+        return;
+      }
+      loadMarksInput.click();
+    });
+
+    loadMarksInput.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (!fullX || fullX.length === 0) {
+        statusOutput && (statusOutput.innerText = 'Load an ECG file before importing marks');
+        loadMarksInput.value = '';
+        return;
+      }
+
+      const fr = new FileReader();
+      fr.onerror = () => {
+        console.error('Load marks read error:', fr.error);
+        statusOutput && (statusOutput.innerText = 'Error reading marks file');
+        loadMarksInput.value = '';
+      };
+      fr.onload = (ev) => {
+        try {
+          const fid = getCurrentFid();
+          const { values, invalid } = parseIntegerXMarks(ev.target && ev.target.result);
+          const existingIdx = new Set((marksAll || []).map(m => Number(m.idx)));
+
+          const firstX = Number(fullX[0]);
+          const lastX = Number(fullX[fullX.length - 1]);
+          const minX = Math.min(firstX, lastX);
+          const maxX = Math.max(firstX, lastX);
+
+          let added = 0;
+          let duplicates = 0;
+          let outOfRange = 0;
+
+          values.forEach((xVal) => {
+            if (xVal < minX || xVal > maxX) { outOfRange += 1; return; }
+            const idx = xToNearestIndex(xVal);
+            if (idx < 0 || idx >= fullX.length) { outOfRange += 1; return; }
+            if (existingIdx.has(idx)) { duplicates += 1; return; }
+            marksAll.push({ idx, type: fid });
+            existingIdx.add(idx);
+            added += 1;
+          });
+
+          if (added > 0) {
+            marksAll.sort((a,b) => a.idx - b.idx || String(a.type).localeCompare(String(b.type)));
+            const start = Number(currentStart || 0);
+            const end = Math.min(fullX.length, start + windowSize);
+            scheduleRender(start, end);
+          }
+          syncCounts();
+
+          const summary = [`LOAD MARKS (${fid}) +${added}`];
+          if (duplicates) summary.push(`${duplicates} duplicates`);
+          if (outOfRange) summary.push(`${outOfRange} out-of-range`);
+          if (invalid) summary.push(`${invalid} invalid`);
+          if (!added && !duplicates && !outOfRange && !invalid) summary.push('empty file');
+          statusOutput && (statusOutput.innerText = summary.join(' | '));
+        } catch (err) {
+          console.error('Load marks parse error:', err);
+          statusOutput && (statusOutput.innerText = 'Error parsing marks file');
+        } finally {
+          loadMarksInput.value = '';
+        }
+      };
+      fr.readAsText(f);
+    });
+
+    loadMarksBtn.__wired = true;
+  }
+  document.addEventListener('DOMContentLoaded', wireLoadMarks);
+
   const clearBtn = document.getElementById('clearMarks');
   clearBtn && clearBtn.addEventListener('click', () => { marksAll.length = 0; segmentsAll.length = 0; pendingSegStartIdx = null; const start = Number(currentStart || 0); const end = Math.min(fullX.length, start + windowSize); renderWindow(start, end); });
 
