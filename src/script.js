@@ -108,6 +108,138 @@
     return Number.isNaN(n) ? null : n;
   });
 
+  const MIN_ECG_ROWS = 50;
+  const isArrayLike = (v) => Array.isArray(v) || ArrayBuffer.isView(v);
+  const isFiniteNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+  const parseNumber = (raw) => {
+    const cleaned = String(raw || '').trim();
+    if (!cleaned) return null;
+    const n = Number(cleaned.replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  };
+  const detectDelimiter = (line) => {
+    if (line.includes('\t')) return '\t';
+    if (line.includes(',')) return ',';
+    return 'whitespace';
+  };
+  const splitLine = (line, delimiter) => {
+    if (delimiter === 'whitespace') return line.trim().split(/\s+/);
+    return line.split(delimiter);
+  };
+  const isLikelyHeader = (tokens) => {
+    if (!tokens || tokens.length === 0) return true;
+    let numeric = 0;
+    for (const token of tokens) {
+      if (parseNumber(token) !== null) numeric += 1;
+    }
+    return numeric < Math.max(3, Math.ceil(tokens.length * 0.5));
+  };
+  const validateEcgData = (time, chs) => {
+    if (!isArrayLike(time) || time.length < MIN_ECG_ROWS) {
+      return { ok: false, reason: 'Not enough ECG samples' };
+    }
+    if (!Array.isArray(chs) || chs.length !== 12) {
+      return { ok: false, reason: 'Expected 12 channels' };
+    }
+    const n = time.length;
+    for (let i = 0; i < chs.length; i++) {
+      const ch = chs[i];
+      if (!isArrayLike(ch) || ch.length !== n) {
+        return { ok: false, reason: 'Channel length mismatch' };
+      }
+    }
+
+    let last = null;
+    let timeCount = 0;
+    for (let i = 0; i < n; i++) {
+      const t = time[i];
+      if (!isFiniteNumber(t)) continue;
+      timeCount += 1;
+      if (last !== null && t < last) {
+        return { ok: false, reason: 'Time must be monotonic' };
+      }
+      last = t;
+    }
+    if (timeCount < MIN_ECG_ROWS) {
+      return { ok: false, reason: 'Time column is not numeric' };
+    }
+
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+    for (let c = 0; c < chs.length; c++) {
+      const ch = chs[c];
+      let count = 0;
+      for (let i = 0; i < n; i++) {
+        const v = ch[i];
+        if (!isFiniteNumber(v)) continue;
+        count += 1;
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      if (count < MIN_ECG_ROWS) {
+        return { ok: false, reason: `Channel ${c + 1} has too few numeric samples` };
+      }
+    }
+
+    if (!Number.isFinite(minVal) || !Number.isFinite(maxVal) || Math.abs(maxVal - minVal) < 1e-9) {
+      return { ok: false, reason: 'Signal has no variation' };
+    }
+
+    return { ok: true };
+  };
+  const parseTextToEcg = (text) => {
+    if (!text || !text.trim()) return { ok: false, reason: 'Empty file' };
+    const rawLines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+    if (rawLines.length === 0) return { ok: false, reason: 'Empty file' };
+
+    const delimiter = detectDelimiter(rawLines[0]);
+    let startIndex = 0;
+    const firstTokens = splitLine(rawLines[0], delimiter);
+    if (isLikelyHeader(firstTokens)) startIndex = 1;
+
+    const rows = [];
+    let invalidRows = 0;
+    for (let i = startIndex; i < rawLines.length; i++) {
+      const tokens = splitLine(rawLines[i], delimiter).filter(t => t.length > 0);
+      if (tokens.length < 13) { invalidRows += 1; continue; }
+      rows.push(tokens);
+    }
+
+    if (rows.length < MIN_ECG_ROWS) return { ok: false, reason: 'Not enough ECG rows' };
+    if (invalidRows > rows.length * 0.5) return { ok: false, reason: 'Too many invalid rows' };
+
+    const time = getTrace(rows, 0);
+    const ch1 = getTrace(rows, 1);
+    const ch2 = getTrace(rows, 2);
+    const ch3 = getTrace(rows, 3);
+    const ch4 = getTrace(rows, 4);
+    const ch5 = getTrace(rows, 5);
+    const ch6 = getTrace(rows, 6);
+    const ch7 = getTrace(rows, 7);
+    const ch8 = getTrace(rows, 8);
+    const ch9 = getTrace(rows, 9);
+    const ch10 = getTrace(rows, 10);
+    const ch11 = getTrace(rows, 11);
+    const ch12 = getTrace(rows, 12);
+    const channels = [ch1, ch2, ch3, ch4, ch5, ch6, ch7, ch8, ch9, ch10, ch11, ch12];
+    const validation = validateEcgData(time, channels);
+    if (!validation.ok) return validation;
+
+    return { ok: true, time, channels };
+  };
+  const setAutomaticDelineationState = (enabled, reason) => {
+    const btn = document.getElementById('automaticDelineation');
+    if (!btn) return;
+    btn.disabled = !enabled;
+    if (reason) {
+      btn.title = reason;
+      btn.setAttribute('aria-disabled', 'true');
+    } else {
+      btn.title = '';
+      btn.removeAttribute('aria-disabled');
+    }
+  };
+
   // Note: .vak expected as tab-delimited with 1 time column + 12 channels
 
   const getEnabledTypes = () => { return new Set(getSegFilterCbs().filter(el => el.checked).map(el => String(el.dataset.type))); };
@@ -478,55 +610,82 @@
         }
 
         if (busy) busy.classList.remove('hidden');
+        if (btn) btn.disabled = true;
         if (statusOutput) statusOutput.innerText = 'Cleaning signal...';
 
+        await new Promise(requestAnimationFrame);
+
         const n = fullX.length;
-        const matrix = new Array(n);
+        const yieldEvery = n >= 200000 ? 20000 : 0;
+        const yieldToUi = () => new Promise(r => setTimeout(r, 0));
+        const toFloat = (v) => {
+          const nVal = Number(v);
+          return Number.isFinite(nVal) ? nVal : NaN;
+        };
+
+        const interleaved = new Float32Array(n * 13);
         for (let i = 0; i < n; i++) {
-          const row = new Array(13);
-          row[0] = fullX[i];
+          const base = i * 13;
+          interleaved[base] = toFloat(fullX[i]);
           for (let c = 0; c < 12; c++) {
-            row[c + 1] = channels[c][i];
+            const v = channels[c] ? channels[c][i] : null;
+            interleaved[base + c + 1] = toFloat(v);
           }
-          matrix[i] = row;
+          if (yieldEvery && i !== 0 && i % yieldEvery === 0) await yieldToUi();
         }
 
-        const resp = await fetch(`${API_BASE}/api/clean_signal`, {
+        const resp = await fetch(`${API_BASE}/api/clean_signal_bin?rows=${n}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ matrix })
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Accept': 'application/octet-stream'
+          },
+          body: interleaved
         });
 
-        if (!resp.ok) throw new Error(`Backend error (${resp.status})`);
-
-        const json = await resp.json();
-
-        if (json.matrix && Array.isArray(json.matrix)) {
-          const newMatrix = json.matrix;
-          const newLen = newMatrix.length;
-          const newTime = new Float32Array(newLen);
-          const newChs = [];
-          for (let c = 0; c < 12; c++) newChs.push(new Float32Array(newLen));
-
-          for (let i = 0; i < newLen; i++) {
-            newTime[i] = newMatrix[i][0];
-            for (let c = 0; c < 12; c++) {
-              newChs[c][i] = newMatrix[i][c + 1];
-            }
-          }
-
-          fullX = newTime;
-          channels = newChs;
-
-          const start = Number(currentStart || 0);
-          const end = Math.min(fullX.length, start + windowSize);
-          renderWindow(start, end);
-
-          if (statusOutput) statusOutput.innerText = 'Signal cleaned';
-        } else {
-          console.warn("Backend did not return a matrix", json);
-          if (statusOutput) statusOutput.innerText = 'Signal cleaned (no data returned)';
+        if (!resp.ok) {
+          const msg = await resp.text();
+          throw new Error(`Backend error (${resp.status}): ${msg}`);
         }
+
+        const contentType = resp.headers.get('content-type') || '';
+        if (!contentType.includes('application/octet-stream')) {
+          throw new Error('Unexpected response type from backend');
+        }
+
+        const buf = await resp.arrayBuffer();
+        const cols = Number(resp.headers.get('x-ecg-cols') || 13);
+        const rows = Number(resp.headers.get('x-ecg-rows') || (buf.byteLength / 4 / cols));
+        if (!Number.isFinite(rows) || rows <= 0 || !Number.isInteger(rows)) {
+          throw new Error('Invalid response shape');
+        }
+
+        const data = new Float32Array(buf);
+        if (data.length !== rows * cols) {
+          throw new Error('Invalid response size');
+        }
+
+        const newTime = new Float32Array(rows);
+        const newChs = [];
+        for (let c = 0; c < 12; c++) newChs.push(new Float32Array(rows));
+
+        for (let i = 0; i < rows; i++) {
+          const base = i * cols;
+          newTime[i] = data[base];
+          for (let c = 0; c < 12; c++) {
+            newChs[c][i] = data[base + c + 1];
+          }
+          if (yieldEvery && i !== 0 && i % yieldEvery === 0) await yieldToUi();
+        }
+
+        fullX = newTime;
+        channels = newChs;
+
+        const start = Number(currentStart || 0);
+        const end = Math.min(fullX.length, start + windowSize);
+        renderWindow(start, end);
+
+        if (statusOutput) statusOutput.innerText = 'Signal cleaned';
 
       } catch (err) {
         console.error('Clean Signal error:', err);
@@ -534,6 +693,7 @@
         if (statusOutput) statusOutput.innerText = 'Error cleaning signal';
       } finally {
         if (busy) busy.classList.add('hidden');
+        if (btn) btn.disabled = false;
       }
     });
     btn.__wired = true;
@@ -635,6 +795,10 @@
     if (!btn || btn.__wired) return;
     btn.addEventListener('click', async () => {
       try {
+        if (isBmecg) {
+          if (statusOutput) statusOutput.innerText = 'Automatic Delineation disabled for BMECG (500 Hz)';
+          return;
+        }
         if (!fullX || !channels || fullX.length === 0 || channels.length !== 12) {
           alert('Load an ECG first (time + 12 channels).');
           return;
@@ -906,11 +1070,6 @@
   }
 
   const processFileBinary = (buffer) => {
-    isBmecg = true;
-    const cleanBtn = document.getElementById('cleanSignal');
-    if (cleanBtn) cleanBtn.disabled = false;
-    const rPeaksBtn = document.getElementById('findRPeaks');
-    if (rPeaksBtn) rPeaksBtn.disabled = false;
     try {
       const rawData = new Uint8Array(buffer);
       const headerStart = 6;
@@ -970,6 +1129,19 @@
       const time = new Float32Array(numSamples);
       for(let i=0; i<numSamples; i++) time[i] = i;
 
+      const validation = validateEcgData(time, newChannels);
+      if (!validation.ok) {
+        statusOutput && (statusOutput.innerText = `Invalid ECG file: ${validation.reason}`);
+        return;
+      }
+
+      isBmecg = true;
+      const cleanBtn = document.getElementById('cleanSignal');
+      if (cleanBtn) cleanBtn.disabled = false;
+      const rPeaksBtn = document.getElementById('findRPeaks');
+      if (rPeaksBtn) rPeaksBtn.disabled = false;
+      setAutomaticDelineationState(false, 'Automatic Delineation disabled for BMECG (500 Hz)');
+
       fullX = time;
       channels = newChannels;
       
@@ -989,7 +1161,7 @@
       
       setScrollbar();
       scheduleRender(initialStart, initialEnd);
-      statusOutput && (statusOutput.innerText = 'Binary file loaded');
+      statusOutput && (statusOutput.innerText = 'BMECG loaded (500 Hz). Automatic Delineation disabled.');
     } catch (err) {
       console.error("Error processing binary file:", err);
       statusOutput && (statusOutput.innerText = 'Error processing binary file');
@@ -997,32 +1169,21 @@
   };
 
   const processFileText = (text) => {
+    const parsed = parseTextToEcg(text);
+    if (!parsed.ok) {
+      statusOutput && (statusOutput.innerText = `Invalid ECG file: ${parsed.reason}`);
+      return;
+    }
+
     isBmecg = false;
     const cleanBtn = document.getElementById('cleanSignal');
     if (cleanBtn) cleanBtn.disabled = true;
     const rPeaksBtn = document.getElementById('findRPeaks');
     if (rPeaksBtn) rPeaksBtn.disabled = true;
-    if (!text) { statusOutput && (statusOutput.innerText = 'Empty file'); return; }
-    const rawLines = text.split(/\r?\n/);
-    const lines = rawLines.filter(l => l.trim().length > 0);
-    if (lines.length <= 1) { statusOutput && (statusOutput.innerText = 'Too few useful lines'); return; }
-    lines.shift(); // drop header
-    const parsed = lines.map(r => r.replace(/\r$/,'').split('\t'));
-    const time = getTrace(parsed, 0);
-    const ch1 = getTrace(parsed, 1);
-    const ch2 = getTrace(parsed, 2);
-    const ch3 = getTrace(parsed, 3);
-    const ch4 = getTrace(parsed, 4);
-    const ch5 = getTrace(parsed, 5);
-    const ch6 = getTrace(parsed, 6);
-    const ch7 = getTrace(parsed, 7);
-    const ch8 = getTrace(parsed, 8);
-    const ch9 = getTrace(parsed, 9);
-    const ch10 = getTrace(parsed, 10);
-    const ch11 = getTrace(parsed, 11);
-    const ch12 = getTrace(parsed, 12);
-    fullX = time;
-    channels = [ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12];
+    setAutomaticDelineationState(true, '');
+
+    fullX = parsed.time;
+    channels = parsed.channels;
     buildChannelCheckboxes(); syncAllCheckbox();
     const selCount = getSelectedIndices().length || 0; updatePlotContainerHeight(selCount);
   const initialStart = 0; const initialEnd = Math.min(fullX.length, initialStart + windowSize);

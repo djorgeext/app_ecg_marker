@@ -1,5 +1,5 @@
 from email import header
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -221,6 +221,66 @@ def clean_signal(payload: ECGMatrixPayload):
             "matrix": matrix_out
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing signal: {e}")
+
+@app.post("/api/clean_signal_bin")
+async def clean_signal_bin(request: Request, rows: Optional[int] = None):
+    """Clean the ECG signal using a binary float32 payload.
+    Request body: interleaved float32 row-major matrix (time + 12 channels).
+    Query param: rows (optional). If absent, inferred from payload length.
+    Response: binary float32 matrix with X-ECG-ROWS/X-ECG-COLS headers.
+    """
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="Body is empty")
+
+    cols = 13
+    if rows is None or rows <= 0:
+        if len(data) % (4 * cols) != 0:
+            raise HTTPException(status_code=400, detail="Payload size is not aligned to float32 matrix")
+        rows = len(data) // (4 * cols)
+
+    expected_bytes = rows * cols * 4
+    if len(data) != expected_bytes:
+        raise HTTPException(status_code=400, detail=f"Payload size mismatch: expected {expected_bytes} bytes")
+
+    try:
+        values = np.frombuffer(data, dtype=np.float32)
+        if values.size != rows * cols:
+            raise HTTPException(status_code=400, detail="Payload size does not match rows*cols")
+        signal = values.reshape(rows, cols).copy()
+
+        ecg_signal = signal[:, 1:]
+        lowcut = 0.5
+        highcut = 60.0
+        fs = 500.0
+        order = 3
+        b, a = butter(order, [lowcut, highcut], btype='bandpass', fs=fs)
+        b2, a2 = butter(order + 1, [lowcut, highcut], btype='bandpass', fs=fs)
+
+        w0 = 50.0
+        quality_factor = 30.0
+        b_notch, a_notch = iircomb(w0, quality_factor, ftype='notch', fs=fs)
+
+        ecg_signal = ecg_signal.astype(np.float32, copy=False)
+        ecg_signal = filtfilt(b, a, ecg_signal, axis=0)
+        ecg_signal = filtfilt(b_notch, a_notch, ecg_signal, axis=0)
+        ecg_signal = filtfilt(b2, a2, ecg_signal, axis=0)
+
+        signal[:, 1:] = ecg_signal
+        matrix_out = signal.astype(np.float32, copy=False).tobytes()
+
+        return Response(
+            content=matrix_out,
+            media_type="application/octet-stream",
+            headers={
+                "X-ECG-ROWS": str(rows),
+                "X-ECG-COLS": str(cols),
+            },
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing signal: {e}")
 
