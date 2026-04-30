@@ -9,34 +9,62 @@ document.addEventListener('DOMContentLoaded', function() {
   setupDropdownUpdates();
 });
 
+function setExpanded(header, targetContent, expanded) {
+  if (header) {
+    header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+  if (!targetContent) return;
+
+  targetContent.classList.toggle('expanded', expanded);
+  if (header) header.classList.toggle('active', expanded);
+  targetContent.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+  targetContent.style.maxHeight = '';
+}
+
 function initializeDropdowns() {
   // Get all dropdown headers
   const dropdownHeaders = document.querySelectorAll('.dropdown-header');
   
   dropdownHeaders.forEach(header => {
+    const targetId = header.getAttribute('data-target');
+    const targetContent = targetId ? document.getElementById(targetId) : null;
+    const titleEl = header.querySelector('.dropdown-title');
+    const headerLabel = titleEl ? titleEl.textContent.trim() : header.textContent.trim();
+
+    if (targetId) header.setAttribute('aria-controls', targetId);
+    if (!header.hasAttribute('aria-expanded')) header.setAttribute('aria-expanded', 'false');
+
+    if (targetContent) {
+      targetContent.setAttribute('aria-hidden', 'true');
+      if (!targetContent.hasAttribute('role')) targetContent.setAttribute('role', 'region');
+      if (headerLabel && !targetContent.hasAttribute('aria-label')) {
+        targetContent.setAttribute('aria-label', headerLabel);
+      }
+    }
+
+    const toggle = () => {
+      if (!targetContent) return;
+      const isExpanded = targetContent.classList.contains('expanded');
+      setExpanded(header, targetContent, !isExpanded);
+    };
+
     header.addEventListener('click', function() {
-      const targetId = this.getAttribute('data-target');
-      const targetContent = document.getElementById(targetId);
-      const arrow = this.querySelector('.dropdown-arrow');
-      
-      if (targetContent) {
-        const isExpanded = targetContent.classList.contains('expanded');
-        
-        if (isExpanded) {
-          // Collapse
-          targetContent.classList.remove('expanded');
-          this.classList.remove('active');
-          // Reset to CSS-controlled max-height for collapse animation
-          targetContent.style.maxHeight = '';
-        } else {
-          // Expand
-          targetContent.classList.add('expanded');
-          this.classList.add('active');
-          // Remove any inline max-height to allow CSS to control expansion
-          targetContent.style.maxHeight = '';
+      toggle();
+    });
+
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      } else if (e.key === 'Escape') {
+        if (targetContent && targetContent.classList.contains('expanded')) {
+          e.preventDefault();
+          setExpanded(header, targetContent, false);
         }
       }
     });
+
+    setExpanded(header, targetContent, false);
   });
   
   // Set initial state - start with all sections collapsed for cleaner UI
@@ -45,10 +73,7 @@ function initializeDropdowns() {
     // Remove inline styles to let CSS handle the state
     content.style.maxHeight = '';
     content.style.padding = '';
-  });
-  
-  document.querySelectorAll('.dropdown-header').forEach(header => {
-    header.classList.remove('active');
+    if (!content.hasAttribute('aria-hidden')) content.setAttribute('aria-hidden', 'true');
   });
 }
 

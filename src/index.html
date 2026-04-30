@@ -42,7 +42,7 @@
       <div class="block">
         <button id="loadFileBtn">Load File</button>
       </div>
-      <div id="statusOutput"></div>
+      <div id="statusOutput" role="status" aria-live="polite" aria-atomic="true"></div>
       <script src="script.js"></script>
       <script src="dropdown_handlers.js"></script>
       
@@ -123,7 +123,7 @@
         <button id="clearMarks">Clear Marks</button>
       </div>
     <div class="block">
-        <button id="loadMarksBtn">LOAD MARKS</button>
+        <button id="loadMarksBtn">Load Marks</button>
       </div>
     <div class="block">
         <button id="automaticDelineation">Automatic Delineation</button>
@@ -134,9 +134,9 @@
     <div class="block">
         <button id="findRPeaks" disabled>Find R Peaks</button>
     </div>
-  <div class="block export-wrap">
-  <button id="exportBtn">Export &#9660;</button>
-        <ul id="exportMenu" class="export-menu hidden">
+    <div class="block export-wrap">
+    <button id="exportBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu">Export &#9660;</button>
+      <ul id="exportMenu" class="export-menu hidden" aria-label="Export options" aria-hidden="true">
           <li class="hdr">Marks</li>
           <li><button type="button" data-exp="marks" data-type="R">R peaks (txt)</button></li>
           <li><button type="button" data-exp="marks" data-type="P">P (txt)</button></li>
@@ -159,7 +159,7 @@
   </div>
 
   <!-- aECG modal -->
-  <div id="aecgModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div id="aecgModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Export HL7 aECG" aria-describedby="aecgInfo" aria-hidden="true">
     <div class="dialog">
       <h3>Export HL7 aECG</h3>
       <form id="aecgForm">

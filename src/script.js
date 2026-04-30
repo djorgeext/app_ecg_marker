@@ -506,15 +506,78 @@
     const aecgDownloadEl = document.getElementById('aecgDownload');
     const aecgBtnEl = document.getElementById('exportAecgBtn');
 
-    const hideMenu = () => { const em = document.getElementById('exportMenu'); if (em) em.classList.add('hidden'); };
-    const toggleMenu = () => { const em = document.getElementById('exportMenu'); if (em) em.classList.toggle('hidden'); };
+    let lastFocusBeforeModal = null;
+
+    if (exportBtnEl) {
+      exportBtnEl.setAttribute('aria-haspopup', 'menu');
+      exportBtnEl.setAttribute('aria-controls', 'exportMenu');
+      if (!exportBtnEl.hasAttribute('aria-expanded')) exportBtnEl.setAttribute('aria-expanded', 'false');
+    }
+    if (exportMenuEl) {
+      if (!exportMenuEl.hasAttribute('aria-label')) exportMenuEl.setAttribute('aria-label', 'Export options');
+      exportMenuEl.setAttribute('aria-hidden', exportMenuEl.classList.contains('hidden') ? 'true' : 'false');
+    }
+    if (aecgModalEl) {
+      aecgModalEl.setAttribute('aria-hidden', aecgModalEl.classList.contains('hidden') ? 'true' : 'false');
+    }
+
+    const setMenuState = (open, options = {}) => {
+      const em = exportMenuEl || document.getElementById('exportMenu');
+      if (em) {
+        em.classList.toggle('hidden', !open);
+        em.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+      if (exportBtnEl) exportBtnEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (!open && options.returnFocus && exportBtnEl) exportBtnEl.focus();
+    };
+
+    const openMenu = (options = {}) => {
+      setMenuState(true, options);
+      if (options.focusFirst && exportMenuEl) {
+        const firstItem = exportMenuEl.querySelector('button');
+        if (firstItem) firstItem.focus();
+      }
+    };
+
+    const closeMenu = (options = {}) => {
+      setMenuState(false, options);
+    };
+
+    const hideMenu = () => { closeMenu({ returnFocus: false }); };
+    const toggleMenu = (options = {}) => {
+      const isHidden = !exportMenuEl || exportMenuEl.classList.contains('hidden');
+      if (isHidden) openMenu(options);
+      else closeMenu(options);
+    };
 
   if (exportBtnEl && !exportBtnEl.__wired) {
-      exportBtnEl.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+      exportBtnEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMenu({ focusFirst: false });
+      });
+      exportBtnEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const isHidden = !exportMenuEl || exportMenuEl.classList.contains('hidden');
+          if (isHidden) openMenu({ focusFirst: true });
+          else closeMenu({ returnFocus: true });
+        } else if (e.key === 'Escape') {
+          if (exportMenuEl && !exportMenuEl.classList.contains('hidden')) {
+            e.preventDefault();
+            closeMenu({ returnFocus: true });
+          }
+        }
+      });
       exportBtnEl.__wired = true;
     }
     if (exportMenuEl && !exportMenuEl.__wired) {
       exportMenuEl.addEventListener('click', (e) => { e.stopPropagation(); });
+      exportMenuEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeMenu({ returnFocus: true });
+        }
+      });
       exportMenuEl.__wired = true;
     }
     if (!document.__exportHideWired) {
@@ -552,22 +615,55 @@
       const modal = document.getElementById('aecgModal');
       const info = document.getElementById('aecgInfo');
       if (!modal) return;
+      lastFocusBeforeModal = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const sr = inferSamplingRate(fullX);
       if (info) info.textContent = `Sampling rate: ${sr || '-'} Hz | Leads: ${channels.length}`;
       modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+      const firstInput = modal.querySelector('input, select, button, [tabindex]:not([tabindex="-1"])');
+      if (firstInput) requestAnimationFrame(() => firstInput.focus());
     };
-    const closeAecg = () => { const modal = document.getElementById('aecgModal'); if (modal) modal.classList.add('hidden'); };
+    const closeAecg = (returnFocus = false) => {
+      const modal = document.getElementById('aecgModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      if (returnFocus && lastFocusBeforeModal && typeof lastFocusBeforeModal.focus === 'function') {
+        lastFocusBeforeModal.focus();
+      }
+    };
 
     if (aecgBtnEl && !aecgBtnEl.__wired) {
       aecgBtnEl.addEventListener('click', () => { hideMenu(); openAecg(); });
       aecgBtnEl.__wired = true;
     }
     if (aecgCancelEl && !aecgCancelEl.__wired) {
-      aecgCancelEl.addEventListener('click', closeAecg);
+      aecgCancelEl.addEventListener('click', () => closeAecg(true));
       aecgCancelEl.__wired = true;
     }
     if (aecgModalEl && !aecgModalEl.__wired) {
-      aecgModalEl.addEventListener('click', (e) => { if (e.target === aecgModalEl) closeAecg(); });
+      aecgModalEl.addEventListener('click', (e) => { if (e.target === aecgModalEl) closeAecg(true); });
+      aecgModalEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeAecg(true);
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        const focusable = Array.from(aecgModalEl.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+          .filter(el => !el.disabled && el.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
       aecgModalEl.__wired = true;
     }
     if (aecgDownloadEl && !aecgDownloadEl.__wired) {
@@ -588,7 +684,7 @@
         }).join('\n');
         const body = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<aECG approximate=\"true\">\n  <patient id=\"${xmlEscape(pid)}\" name=\"${xmlEscape(pname)}\" sex=\"${xmlEscape(sex)}\" dob=\"${xmlEscape(dob)}\"/>\n  <study id=\"${xmlEscape(study)}\" device=\"${xmlEscape(device)}\" samplingRate=\"${xmlEscape(sr)}\" leads=\"${channels.length}\"/>\n  <marks>\n${marksXml}\n  </marks>\n  <segments>\n${segsXml}\n  </segments>\n</aECG>\n`;
         downloadText(body, 'export_aecg.xml');
-        closeAecg();
+        closeAecg(true);
       });
       aecgDownloadEl.__wired = true;
     }
